@@ -17,123 +17,134 @@
   #hud .stat b{color:#8ab4f8;font-weight:600;}
   #hud .hint{color:#777;font-size:11px;margin-top:8px;line-height:1.5;}
 
-  #panel{position:fixed;top:16px;right:16px;background:rgba(12,12,22,.9);
-    padding:12px 12px;border-radius:12px;font-size:12px;line-height:1.5;
-    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);width:292px;
-    color:#c6c6d0;z-index:10;max-height:calc(100vh - 32px);display:flex;
+  #panel{position:fixed;top:16px;right:16px;background:rgba(22,24,38,.94);
+    padding:14px 14px;border-radius:12px;font-size:12px;line-height:1.5;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);width:352px;
+    color:#dcdce6;z-index:10;max-height:calc(100vh - 32px);display:flex;
     flex-direction:column;
-    /* 统一色板：单一强调色 + 中性灰 + 一个危险红 */
-    --acc:#8ab4f8; --acc-soft:#a6c2ec; --txt:#c6c6d0; --dim:#8b8b98;
-    --faint:#5f5f6b; --line:rgba(255,255,255,.09); --danger:#e08585;}
-  #panel .ptitle{font-size:12px;font-weight:600;color:#e9e9f2;margin-bottom:8px;
+    box-shadow:0 12px 36px rgba(0,0,0,.45);
+    /* 统一色板：单一强调色 + 中性灰 + 一个危险红（整体提亮一档） */
+    --acc:#9dc0ff; --acc-soft:#bcd2f6; --txt:#dcdce6; --dim:#a6a6b8;
+    --faint:#82828f; --line:rgba(255,255,255,.14); --danger:#f0a0a0;}
+  #panel .ptitle{font-size:12.5px;font-weight:600;color:#f2f3fa;margin-bottom:10px;
     display:flex;justify-content:space-between;align-items:center;}
   #panel .ptitle span:last-child{color:var(--faint);font-size:10px;font-weight:400;}
   #layerList{flex:1;overflow-y:auto;padding-right:2px;margin-right:-2px;}
-  #layerList::-webkit-scrollbar{width:5px;}
-  #layerList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);
+  #layerList::-webkit-scrollbar{width:6px;}
+  #layerList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);
     border-radius:3px;}
 
   /* 卡片 = 左侧「可见」竖栏 + 右侧内容栏 */
-  .layerCard{display:flex;align-items:stretch;background:rgba(255,255,255,.025);
+  .layerCard{display:flex;align-items:stretch;background:rgba(255,255,255,.045);
     border:1px solid var(--line);border-radius:8px;
-    padding:8px 10px 8px 6px;margin-bottom:8px;transition:border-color .15s,opacity .15s;}
-  .layerCard:hover{border-color:rgba(255,255,255,.16);}
+    padding:9px 11px 9px 7px;margin-bottom:8px;cursor:pointer;
+    transition:border-color .15s,background .15s,box-shadow .15s,opacity .15s;}
+  /* hover：整卡提亮，竖栏分界线跟着亮 */
+  .layerCard:hover{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.085);
+    box-shadow:0 0 0 1px rgba(255,255,255,.06) inset;}
+  .layerCard:hover .lside{border-right-color:rgba(255,255,255,.22);}
+  /* selected：蓝色锁定，主场景钉住该层（hover 别的卡只做临时预览） */
+  .layerCard.selected{border-color:rgba(157,192,255,.62);background:rgba(157,192,255,.12);
+    box-shadow:0 0 0 1px rgba(157,192,255,.26) inset;}
+  .layerCard.selected .lside{border-right-color:rgba(157,192,255,.5);}
+  .layerCard.selected .lhead .lname{color:#eef4ff;}
+  .layerCard.selected .lradius{color:rgba(213,229,255,.85);}
   /* 半径不足（不可见）才整体淡化；手动隐藏不变暗，只靠眼睛变色 + 右栏停用 */
   .layerCard.hidden-layer{opacity:0.35;}
   .layerCard.user-hidden .lbody{pointer-events:none;}
   /* 删除按钮保持可用，隐藏的层照样能删 */
   .layerCard.user-hidden .lhead .ldel{pointer-events:auto;}
   .lside{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;
-    padding:0 8px 0 2px;margin-right:9px;
-    border-right:1px solid rgba(255,255,255,.07);}
+    padding:0 9px 0 2px;margin-right:10px;
+    border-right:1px solid rgba(255,255,255,.1);}
   .lbody{flex:1 1 auto;min-width:0;}
   /* 眼睛：放大并独占左栏，卡片再高也只有它在顶部 */
-  .leye{width:30px;height:30px;border-radius:6px;border:1px solid rgba(255,255,255,.12);
-    background:rgba(255,255,255,.04);color:var(--dim);cursor:pointer;padding:0;
+  .leye{width:32px;height:32px;border-radius:6px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.07);color:var(--dim);cursor:pointer;padding:0;
     display:flex;align-items:center;justify-content:center;flex-shrink:0;
     transition:all .15s;}
-  .leye.on{color:var(--acc);border-color:rgba(138,180,248,.32);
-    background:rgba(138,180,248,.10);}
-  .leye.off{color:var(--faint);border-color:rgba(255,255,255,.06);
-    background:rgba(255,255,255,.015);}
-  .leye:hover{border-color:rgba(138,180,248,.45);background:rgba(138,180,248,.16);}
-  .leye.on:hover{color:var(--acc);}
+  .leye.on{color:var(--acc);border-color:rgba(157,192,255,.42);
+    background:rgba(157,192,255,.16);}
+  .leye.off{color:var(--faint);border-color:rgba(255,255,255,.1);
+    background:rgba(255,255,255,.03);}
+  .leye:hover{border-color:rgba(157,192,255,.55);background:rgba(157,192,255,.22);}
+  .leye.on:hover{color:#cfe0ff;}
   .leye.off:hover{color:var(--txt);}
-  .leye svg{display:block;width:19px;height:19px;}
+  .leye svg{display:block;width:20px;height:20px;}
   .lhead{display:flex;justify-content:space-between;align-items:center;
-    font-size:11px;margin-bottom:6px;gap:4px;}
+    font-size:11.5px;margin-bottom:7px;gap:4px;}
   .lhead .lname{color:var(--txt);font-weight:600;flex-shrink:0;}
   .lhead .lradius{color:var(--dim);font-variant-numeric:tabular-nums;
-    font-size:10px;flex:1;text-align:right;}
-  .lhead .ldel{width:18px;height:18px;border-radius:4px;border:none;
-    background:rgba(224,133,133,.12);color:var(--danger);cursor:pointer;font-size:12px;
+    font-size:10.5px;flex:1;text-align:right;}
+  .lhead .ldel{width:19px;height:19px;border-radius:4px;border:none;
+    background:rgba(240,160,160,.18);color:var(--danger);cursor:pointer;font-size:12px;
     line-height:1;padding:0;display:flex;align-items:center;
     justify-content:center;transition:background .15s;flex-shrink:0;}
-  .lhead .ldel:hover{background:rgba(224,133,133,.28);}
-  .lhead .ldel:disabled{opacity:.25;cursor:not-allowed;}
+  .lhead .ldel:hover{background:rgba(240,160,160,.4);}
+  .lhead .ldel:disabled{opacity:.3;cursor:not-allowed;}
 
   /* 类型选择：默认全部中性，只有选中项保留自身颜色 */
-  .ltypes{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;
-    margin-bottom:6px;}
-  .ltypes button{padding:5px 2px;border:1px solid rgba(255,255,255,.1);
-    background:rgba(255,255,255,.02);color:var(--dim);border-radius:4px;
-    font-size:10px;cursor:pointer;transition:all .12s;white-space:nowrap;
+  .ltypes{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;
+    margin-bottom:7px;}
+  .ltypes button{padding:6px 2px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.05);color:var(--dim);border-radius:5px;
+    font-size:10.5px;cursor:pointer;transition:all .12s;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;}
-  .ltypes button:hover{background:rgba(255,255,255,.07);color:var(--txt);
-    border-color:rgba(255,255,255,.2);}
-  .ltypes button.active{background:rgba(255,255,255,.05);color:var(--c);
+  .ltypes button:hover{background:rgba(255,255,255,.13);color:var(--txt);
+    border-color:rgba(255,255,255,.32);}
+  .ltypes button.active{background:rgba(255,255,255,.11);color:var(--c);
     border-color:var(--c);font-weight:600;}
 
-  .lrow{display:flex;flex-direction:column;gap:5px;}
-  .lrowLine{display:flex;align-items:center;gap:6px;}
-  .lrowLine label{font-size:10px;color:var(--dim);width:54px;flex-shrink:0;}
+  .lrow{display:flex;flex-direction:column;gap:6px;}
+  .lrowLine{display:flex;align-items:center;gap:7px;}
+  .lrowLine label{font-size:10.5px;color:var(--dim);width:60px;flex-shrink:0;}
   .lrowLine input[type=range]{flex:1;accent-color:var(--acc);margin:0;height:12px;}
-  .lrowLine .lval{color:var(--acc-soft);font-size:10px;min-width:38px;
+  .lrowLine .lval{color:var(--acc-soft);font-size:10.5px;min-width:42px;
     text-align:right;font-variant-numeric:tabular-nums;}
   .lrowLine .lval.auto{color:var(--faint);font-style:italic;}
-  .lrowLine .lauto{width:18px;height:16px;border-radius:3px;border:none;
-    background:rgba(255,255,255,.05);color:var(--faint);cursor:pointer;font-size:9px;
+  .lrowLine .lauto{width:19px;height:17px;border-radius:3px;border:none;
+    background:rgba(255,255,255,.09);color:var(--faint);cursor:pointer;font-size:9px;
     line-height:1;padding:0;display:flex;align-items:center;justify-content:center;
     flex-shrink:0;transition:all .12s;}
-  .lrowLine .lauto:hover{background:rgba(255,255,255,.12);color:var(--txt);}
-  .lrowLine .lauto.on{background:rgba(138,180,248,.2);color:var(--acc);}
-  .lrowLine select{flex:1;min-width:0;background:rgba(255,255,255,.05);
-    border:1px solid rgba(255,255,255,.12);color:var(--txt);border-radius:4px;
-    font-size:10px;padding:3px 4px;outline:none;cursor:pointer;font-family:inherit;}
-  .lrowLine select:focus{border-color:rgba(138,180,248,.55);}
-  .lrowLine select option{background:#1a1a2a;color:#ccc;}
+  .lrowLine .lauto:hover{background:rgba(255,255,255,.2);color:var(--txt);}
+  .lrowLine .lauto.on{background:rgba(157,192,255,.3);color:var(--acc);}
+  .lrowLine select{flex:1;min-width:0;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.2);color:var(--txt);border-radius:5px;
+    font-size:11px;padding:4px 6px;outline:none;cursor:pointer;font-family:inherit;}
+  .lrowLine select:focus{border-color:rgba(157,192,255,.7);}
+  .lrowLine select option{background:#22243a;color:#e4e4f0;}
 
   /* 面 / 边 / 点：统一强调色 + 单色形状标记区分 */
-  .lops{margin-top:5px;gap:3px;padding-top:5px;
-    border-top:1px solid rgba(255,255,255,.07);}
+  .lops{margin-top:6px;gap:4px;padding-top:6px;
+    border-top:1px solid rgba(255,255,255,.12);}
   .lops .lrowLine label{width:16px;font-weight:600;color:var(--dim);}
   .lops .mk{width:9px;height:9px;flex-shrink:0;border-radius:2px;
-    border:1.5px solid var(--acc);opacity:.8;}
-  .lops .mk-face{background:rgba(138,180,248,.22);}
+    border:1.5px solid var(--acc);opacity:.9;}
+  .lops .mk-face{background:rgba(157,192,255,.32);}
   .lops .mk-edge{height:2px;border:none;border-radius:1px;background:var(--acc);}
   .lops .mk-dot{width:6px;height:6px;border:none;border-radius:50%;
     background:var(--acc);margin:0 1px;}
   .lops .lval{color:var(--acc-soft);}
   .lops .lval.auto{color:var(--faint);font-style:italic;}
 
-  #btnRow{display:flex;gap:6px;margin-top:4px;flex-shrink:0;}
-  #addBtn{flex:1;padding:7px;border:1px dashed rgba(255,255,255,.18);
-    background:transparent;color:var(--dim);border-radius:6px;font-size:11px;
+  #btnRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
+  #addBtn{flex:1;padding:8px;border:1px dashed rgba(255,255,255,.28);
+    background:rgba(255,255,255,.03);color:var(--dim);border-radius:6px;font-size:11.5px;
     cursor:pointer;transition:all .15s;}
-  #addBtn:hover{background:rgba(255,255,255,.05);color:var(--txt);
-    border-color:rgba(255,255,255,.3);}
-  #hideAllBtn{width:78px;flex-shrink:0;padding:7px 0;border-radius:6px;
-    border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--dim);
-    font-size:11px;cursor:pointer;transition:all .15s;}
-  #hideAllBtn:hover{background:rgba(138,180,248,.12);color:var(--acc);
-    border-color:rgba(138,180,248,.35);}
-  #hideAllBtn.allhidden{background:rgba(138,180,248,.16);color:var(--acc);
-    border-color:rgba(138,180,248,.4);}
-  #resetBtn{width:36px;flex-shrink:0;padding:7px 0;border-radius:6px;
-    border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--dim);
-    font-size:12px;cursor:pointer;transition:all .15s;}
-  #resetBtn:hover{background:rgba(255,255,255,.08);color:var(--txt);
-    border-color:rgba(255,255,255,.22);}
+  #addBtn:hover{background:rgba(255,255,255,.1);color:var(--txt);
+    border-color:rgba(255,255,255,.42);}
+  #hideAllBtn{width:88px;flex-shrink:0;padding:8px 0;border-radius:6px;
+    border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.03);
+    color:var(--dim);font-size:11.5px;cursor:pointer;transition:all .15s;}
+  #hideAllBtn:hover{background:rgba(157,192,255,.18);color:var(--acc);
+    border-color:rgba(157,192,255,.45);}
+  #hideAllBtn.allhidden{background:rgba(157,192,255,.22);color:var(--acc);
+    border-color:rgba(157,192,255,.5);}
+  #resetBtn{width:40px;flex-shrink:0;padding:8px 0;border-radius:6px;
+    border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.03);
+    color:var(--dim);font-size:12px;cursor:pointer;transition:all .15s;}
+  #resetBtn:hover{background:rgba(255,255,255,.13);color:var(--txt);
+    border-color:rgba(255,255,255,.32);}
 
   #error{position:fixed;inset:0;display:none;align-items:center;
     justify-content:center;background:#050508;color:#f88;padding:24px;
@@ -144,7 +155,7 @@
 <div id="hud">
   <div class="title">柏拉图立体 · 相对内嵌</div>
   <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
-  <div class="hint">右侧编辑每层<br>类型 / 相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>删除会弹窗确认<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+  <div class="hint">右侧编辑每层<br>类型 / 相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停层卡 → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>删除会弹窗确认<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
 </div>
 
 <div id="panel">
@@ -540,11 +551,14 @@ function buildScene(radii) {
     const edgeOp = (L.opacityEdge == null) ? auto.edge : L.opacityEdge;
     const dotOp  = (L.opacityDot  == null) ? auto.dot  : L.opacityDot;
 
+    const from = group.children.length;
     if (L.type === 'AssembledStar' && StarAsm) {
       addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp);
     } else {
       addPlainLayer(group, L, r, color, faceOp, edgeOp, dotOp);
     }
+    // 本层新加的对象统一打标：记录所属层与材质基准透明度（hover 淡化用）
+    for (let i = from; i < group.children.length; i++) markLayer(group.children[i], k);
 
     if (vi === nVis - 1 && nVis >= 2) {
       const ringGeo = new THREE.TorusGeometry(r * 1.08, Math.max(0.004, r * 0.01), 6, 64);
@@ -554,6 +568,7 @@ function buildScene(radii) {
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.userData.isHintRing = true;
       ring.userData._targetOp = 0.2;
+      markLayer(ring, k);
       group.add(ring);
     }
   }
@@ -570,12 +585,79 @@ function disposeGroup(g) {
   });
 }
 
+// ---------- hover 聚焦：hover 某层卡片时，其余层在主场景里淡化 ----------
+const FOCUS_DIM = 0.18;   // 非聚焦层的淡化倍数
+let focusLayer = -1;      // 当前生效的聚焦层（由 hover / selected 算出）
+let hoverLayer = -1;      // 鼠标悬停的层：临时预览，优先于 selected
+let selectedLayer = -1;   // 点击选中的层：鼠标移开后仍然钉住
+
+function focusMul(o) {
+  if (focusLayer < 0) return 1;
+  return (o.userData.layerIndex === focusLayer) ? 1 : FOCUS_DIM;
+}
+
+// 给一层生成的整棵子树打上 layerIndex，并记住每个材质的基准 opacity
+function markLayer(obj, k) {
+  obj.traverse(o => {
+    o.userData.layerIndex = k;
+    if (!o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(m => {
+      if (m.userData._baseOp === undefined) m.userData._baseOp = m.opacity;
+    });
+  });
+}
+
+// 聚焦到「看不见的层」没有意义：隐藏或半径不足时取消淡化
+function resolveFocus() {
+  const k = (hoverLayer >= 0) ? hoverLayer : selectedLayer;
+  if (k < 0 || !layerDefs[k]) return -1;
+  if (isLayerHidden(k) || !(currentRadii[k] >= MIN_VISIBLE_R)) return -1;
+  return k;
+}
+
+function applyFocus() {
+  focusLayer = resolveFocus();
+  if (!currentGroup) return;
+  currentGroup.traverse(o => {
+    if (!o.material) return;
+    const dim = (focusLayer >= 0 && o.userData.layerIndex !== focusLayer) ? FOCUS_DIM : 1;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(m => {
+      if (m.userData._baseOp === undefined) m.userData._baseOp = m.opacity;
+      m.opacity = m.userData._baseOp * dim;
+    });
+  });
+}
+
+function setHoverLayer(k) {
+  if (k === hoverLayer) return;
+  hoverLayer = k;
+  applyFocus();
+}
+
+function setSelectedLayer(k) {
+  if (k === selectedLayer) return;
+  selectedLayer = k;
+  document.querySelectorAll('#layerList .layerCard').forEach(card => {
+    card.classList.toggle('selected', Number(card.dataset.idx) === selectedLayer);
+  });
+  applyFocus();
+}
+
+function clearFocusState() {
+  hoverLayer = -1;
+  selectedLayer = -1;
+  if (currentGroup) applyFocus();
+}
+
 function refreshScene() {
   currentRadii = computeRadii();
   const old = currentGroup;
   currentGroup = buildScene(currentRadii);
   scene.add(currentGroup);
   if (old) { scene.remove(old); disposeGroup(old); }
+  applyFocus();
   updateRadiusLabels();
 }
 
@@ -615,6 +697,7 @@ function rebuildPanel() {
     // 只有几何上不可见（半径太小）才淡化卡片；手动隐藏不弄暗，靠眼睛变色表达
     if (r < MIN_VISIBLE_R) cardCls += ' hidden-layer';
     if (hidden) cardCls += ' user-hidden';
+    if (k === selectedLayer) cardCls += ' selected';
 
     html += `<div class="${cardCls}" data-idx="${k}">`;
 
@@ -813,6 +896,10 @@ function bindPanelEvents(list) {
         if (L2.relTo === del) L2.relTo = del > 0 ? del - 1 : null;
         else if (L2.relTo > del) L2.relTo -= 1;
       }
+      // 删掉的是选中 / 悬停层时同步挪位，避免聚焦到别的层
+      if (selectedLayer === del) selectedLayer = -1;
+      else if (selectedLayer > del) selectedLayer -= 1;
+      hoverLayer = -1;
       rebuild();
       scheduleSave();
     });
@@ -916,6 +1003,7 @@ function bindEvents() {
     dragging = false;
     try { el.releasePointerCapture(e.pointerId); } catch(_){}
     if (moved) scheduleSave();
+    else setSelectedLayer(-1);   // 点画布空白 = 退出锁定
   });
   el.addEventListener('wheel', e => {
     e.preventDefault();
@@ -944,6 +1032,25 @@ function bindEvents() {
     list.scrollTop = list.scrollHeight;
   });
 
+  // 层卡片 hover → 主场景只保留该层（临时预览）；点击 → 选中并钉住；点空白 / Esc 取消
+  const layerListEl = document.getElementById('layerList');
+  layerListEl.addEventListener('pointerover', e => {
+    const card = (e.target && e.target.closest) ? e.target.closest('.layerCard') : null;
+    setHoverLayer(card ? Number(card.dataset.idx) : -1);
+  });
+  layerListEl.addEventListener('pointerleave', () => setHoverLayer(-1));
+
+  // 点击：卡内 → 选中该层；面板其它空白（标题 / 卡片间隙 / 内边距）→ 取消
+  const panelEl = document.getElementById('panel');
+  panelEl.addEventListener('click', e => {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    // 眼睛 / 删除是卡内操作按钮，底部按钮行是全局操作，都不改动选中态
+    if (t.closest('.leye') || t.closest('.ldel') || t.closest('#btnRow')) return;
+    const card = t.closest('.layerCard');
+    setSelectedLayer(card ? Number(card.dataset.idx) : -1);
+  });
+
   document.getElementById('hideAllBtn').addEventListener('click', () => {
     toggleHideAll();
   });
@@ -957,12 +1064,14 @@ function bindEvents() {
     rotX = 0.15; rotY = 0.3; autoRot = 0; camZ = 3.4;
     camera.position.z = camZ;
     hideAllSnapshot = null;
+    clearFocusState();
     clearState();
     rebuild();
   });
 
   window.addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); spaceHeld = !spaceHeld; return; }
+    if (e.key === 'Escape') { setSelectedLayer(-1); return; }
     const tag = (e.target && e.target.tagName || '').toUpperCase();
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.key === 'h' || e.key === 'H') toggleHideAll();
@@ -980,7 +1089,7 @@ function loop() {
     currentGroup.traverse(o => {
       if (o.userData.isHintRing && o.material) {
         const base = o.userData._targetOp || 0.2;
-        o.material.opacity = base * (0.55 + 0.45 * Math.sin(now * 0.002));
+        o.material.opacity = base * (0.55 + 0.45 * Math.sin(now * 0.002)) * focusMul(o);
         o.rotation.z += dt * 0.3;
       }
     });
