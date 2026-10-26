@@ -1,0 +1,341 @@
+{
+  "schema": "mksr.star-tetrahedron.editor/1",
+  "savedAt": null,
+  "pieces": [
+    {
+      "id": 1,
+      "group": "upper",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "S",
+          "style": "solid"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "group": "upper",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "S",
+          "style": "solid"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "group": "upper",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "S",
+          "style": "dashed"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "group": "upper",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "S",
+          "style": "dashed"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "group": "lower",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "S",
+          "style": "dashed"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "group": "lower",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "S",
+          "style": "dashed"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "group": "lower",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "dashed"
+        },
+        {
+          "srt": "S",
+          "style": "solid"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "group": "lower",
+      "edges": [
+        {
+          "srt": "S",
+          "style": "solid"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "T",
+          "style": "dashed"
+        },
+        {
+          "srt": "R",
+          "style": "solid"
+        },
+        {
+          "srt": "S",
+          "style": "solid"
+        }
+      ]
+    }
+  ],
+  "slots": {
+    "upper": [
+      {
+        "piece": 1,
+        "variant": 1
+      },
+      {
+        "piece": 2,
+        "variant": 5
+      },
+      {
+        "piece": 3,
+        "variant": 0
+      },
+      {
+        "piece": 4,
+        "variant": 4
+      }
+    ],
+    "lower": [
+      {
+        "piece": 5,
+        "variant": 1
+      },
+      {
+        "piece": 6,
+        "variant": 5
+      },
+      {
+        "piece": 7,
+        "variant": 0
+      },
+      {
+        "piece": 8,
+        "variant": 4
+      }
+    ]
+  },
+  "paletteId": "bw",
+  "palettes": [
+    {
+      "id": "bw",
+      "name": "白红灰",
+      "colors": {
+        "S": "#f4f6f8",
+        "R": "#e04b4b",
+        "T": "#9aa2ac"
+      }
+    },
+    {
+      "id": "mkb",
+      "name": "青紫橙",
+      "colors": {
+        "S": "#66e0ff",
+        "R": "#e066ff",
+        "T": "#ff8c2e"
+      }
+    },
+    {
+      "id": "ink",
+      "name": "丹青黛",
+      "colors": {
+        "S": "#e9c46a",
+        "R": "#d1495b",
+        "T": "#6c8598"
+      }
+    },
+    {
+      "id": "neon",
+      "name": "霓虹",
+      "colors": {
+        "S": "#4ff5ff",
+        "R": "#ff56c8",
+        "T": "#b6ff3a"
+      }
+    }
+  ],
+  "groups": {
+    "upper": {
+      "mode": 0
+    },
+    "lower": {
+      "mode": 0
+    }
+  },
+  "frames": {
+    "upper": {
+      "rotationDeg": 0,
+      "axisOffset": 0
+    },
+    "lower": {
+      "rotationDeg": 180,
+      "axisOffset": 0
+    }
+  }
+}
