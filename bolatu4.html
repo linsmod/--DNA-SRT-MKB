@@ -20,82 +20,107 @@
   #panel{position:fixed;top:16px;right:16px;background:rgba(12,12,22,.9);
     padding:12px 12px;border-radius:12px;font-size:12px;line-height:1.5;
     backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);width:292px;
-    color:#ccc;z-index:10;max-height:calc(100vh - 32px);display:flex;
-    flex-direction:column;}
-  #panel .ptitle{font-size:12px;font-weight:600;color:#eee;margin-bottom:8px;
+    color:#c6c6d0;z-index:10;max-height:calc(100vh - 32px);display:flex;
+    flex-direction:column;
+    /* 统一色板：单一强调色 + 中性灰 + 一个危险红 */
+    --acc:#8ab4f8; --acc-soft:#a6c2ec; --txt:#c6c6d0; --dim:#8b8b98;
+    --faint:#5f5f6b; --line:rgba(255,255,255,.09); --danger:#e08585;}
+  #panel .ptitle{font-size:12px;font-weight:600;color:#e9e9f2;margin-bottom:8px;
     display:flex;justify-content:space-between;align-items:center;}
-  #panel .ptitle span:last-child{color:#666;font-size:10px;font-weight:400;}
+  #panel .ptitle span:last-child{color:var(--faint);font-size:10px;font-weight:400;}
   #layerList{flex:1;overflow-y:auto;padding-right:2px;margin-right:-2px;}
   #layerList::-webkit-scrollbar{width:5px;}
-  #layerList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);
+  #layerList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);
     border-radius:3px;}
 
-  .layerCard{background:rgba(255,255,255,.03);
-    border:1px solid rgba(255,255,255,.08);border-radius:8px;
+  .layerCard{background:rgba(255,255,255,.025);
+    border:1px solid var(--line);border-radius:8px;
     padding:8px 10px;margin-bottom:8px;transition:border-color .15s,opacity .15s;}
+  .layerCard:hover{border-color:rgba(255,255,255,.16);}
   .layerCard.hidden-layer{opacity:0.35;}
+  .layerCard.user-hidden{opacity:0.32;border-style:dashed;}
+  .leye{width:22px;height:18px;border-radius:4px;border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.04);color:var(--dim);cursor:pointer;padding:0;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    margin-right:4px;transition:all .15s;}
+  .leye:hover{background:rgba(138,180,248,.16);color:var(--acc);border-color:rgba(138,180,248,.4);}
+  .leye.on{color:var(--acc);border-color:rgba(138,180,248,.3);}
+  .leye.off{color:var(--faint);}
+  .leye svg{display:block;}
   .lhead{display:flex;justify-content:space-between;align-items:center;
     font-size:11px;margin-bottom:6px;gap:4px;}
-  .lhead .lname{color:#ccc;font-weight:600;flex-shrink:0;}
-  .lhead .lradius{color:#8ab4f8;font-variant-numeric:tabular-nums;
+  .lhead .lname{color:var(--txt);font-weight:600;flex-shrink:0;}
+  .lhead .lradius{color:var(--dim);font-variant-numeric:tabular-nums;
     font-size:10px;flex:1;text-align:right;}
   .lhead .ldel{width:18px;height:18px;border-radius:4px;border:none;
-    background:rgba(255,100,100,.15);color:#f88;cursor:pointer;font-size:12px;
+    background:rgba(224,133,133,.12);color:var(--danger);cursor:pointer;font-size:12px;
     line-height:1;padding:0;display:flex;align-items:center;
     justify-content:center;transition:background .15s;flex-shrink:0;}
-  .lhead .ldel:hover{background:rgba(255,100,100,.35);}
-  .lhead .ldel:disabled{opacity:0.25;cursor:not-allowed;}
+  .lhead .ldel:hover{background:rgba(224,133,133,.28);}
+  .lhead .ldel:disabled{opacity:.25;cursor:not-allowed;}
 
+  /* 类型选择：默认全部中性，只有选中项保留自身颜色 */
   .ltypes{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;
     margin-bottom:6px;}
-  .ltypes button{padding:5px 2px;border:1px solid var(--c);
-    background:transparent;color:var(--c);border-radius:4px;font-size:10px;
-    cursor:pointer;transition:all .1s;white-space:nowrap;overflow:hidden;
-    text-overflow:ellipsis;}
-  .ltypes button:hover{background:rgba(255,255,255,.1);}
-  .ltypes button.active{background:var(--c);color:#000;font-weight:600;}
+  .ltypes button{padding:5px 2px;border:1px solid rgba(255,255,255,.1);
+    background:rgba(255,255,255,.02);color:var(--dim);border-radius:4px;
+    font-size:10px;cursor:pointer;transition:all .12s;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
+  .ltypes button:hover{background:rgba(255,255,255,.07);color:var(--txt);
+    border-color:rgba(255,255,255,.2);}
+  .ltypes button.active{background:rgba(255,255,255,.05);color:var(--c);
+    border-color:var(--c);font-weight:600;}
 
   .lrow{display:flex;flex-direction:column;gap:5px;}
   .lrowLine{display:flex;align-items:center;gap:6px;}
-  .lrowLine label{font-size:10px;color:#888;width:54px;flex-shrink:0;}
-  .lrowLine input[type=range]{flex:1;accent-color:#8ab4f8;margin:0;height:12px;}
-  .lrowLine .lval{color:#8ab4f8;font-size:10px;min-width:38px;
+  .lrowLine label{font-size:10px;color:var(--dim);width:54px;flex-shrink:0;}
+  .lrowLine input[type=range]{flex:1;accent-color:var(--acc);margin:0;height:12px;}
+  .lrowLine .lval{color:var(--acc-soft);font-size:10px;min-width:38px;
     text-align:right;font-variant-numeric:tabular-nums;}
-  .lrowLine .lval.auto{color:#666;font-style:italic;}
+  .lrowLine .lval.auto{color:var(--faint);font-style:italic;}
   .lrowLine .lauto{width:18px;height:16px;border-radius:3px;border:none;
-    background:rgba(255,255,255,.06);color:#888;cursor:pointer;font-size:9px;
+    background:rgba(255,255,255,.05);color:var(--faint);cursor:pointer;font-size:9px;
     line-height:1;padding:0;display:flex;align-items:center;justify-content:center;
-    flex-shrink:0;}
-  .lrowLine .lauto:hover{background:rgba(255,255,255,.15);color:#ccc;}
-  .lrowLine .lauto.on{background:rgba(138,180,248,.25);color:#8ab4f8;}
-  .lrowLine select{flex:1;min-width:0;background:rgba(255,255,255,.06);
-    border:1px solid rgba(255,255,255,.12);color:#ccc;border-radius:4px;
+    flex-shrink:0;transition:all .12s;}
+  .lrowLine .lauto:hover{background:rgba(255,255,255,.12);color:var(--txt);}
+  .lrowLine .lauto.on{background:rgba(138,180,248,.2);color:var(--acc);}
+  .lrowLine select{flex:1;min-width:0;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.12);color:var(--txt);border-radius:4px;
     font-size:10px;padding:3px 4px;outline:none;cursor:pointer;font-family:inherit;}
-  .lrowLine select:focus{border-color:rgba(138,180,248,.6);}
+  .lrowLine select:focus{border-color:rgba(138,180,248,.55);}
   .lrowLine select option{background:#1a1a2a;color:#ccc;}
 
+  /* 面 / 边 / 点：统一强调色 + 单色形状标记区分 */
   .lops{margin-top:5px;gap:3px;padding-top:5px;
-    border-top:1px solid rgba(255,255,255,.06);}
-  .lops .lrowLine label{width:22px;font-weight:600;opacity:.9;}
-  .lops .lrowLine.op-face{--accent:#8ab4f8;}
-  .lops .lrowLine.op-edge{--accent:#7ddc9a;}
-  .lops .lrowLine.op-dot {--accent:#ffc46b;}
-  .lops .lrowLine label{color:var(--accent);}
-  .lops .lrowLine input[type=range]{accent-color:var(--accent);}
-  .lops .lval{color:var(--accent);}
-  .lops .lval.auto{color:#666;font-style:italic;}
+    border-top:1px solid rgba(255,255,255,.07);}
+  .lops .lrowLine label{width:16px;font-weight:600;color:var(--dim);}
+  .lops .mk{width:9px;height:9px;flex-shrink:0;border-radius:2px;
+    border:1.5px solid var(--acc);opacity:.8;}
+  .lops .mk-face{background:rgba(138,180,248,.22);}
+  .lops .mk-edge{height:2px;border:none;border-radius:1px;background:var(--acc);}
+  .lops .mk-dot{width:6px;height:6px;border:none;border-radius:50%;
+    background:var(--acc);margin:0 1px;}
+  .lops .lval{color:var(--acc-soft);}
+  .lops .lval.auto{color:var(--faint);font-style:italic;}
 
   #btnRow{display:flex;gap:6px;margin-top:4px;flex-shrink:0;}
-  #addBtn{flex:1;padding:7px;border:1px dashed rgba(255,255,255,.2);
-    background:transparent;color:#aaa;border-radius:6px;font-size:11px;
+  #addBtn{flex:1;padding:7px;border:1px dashed rgba(255,255,255,.18);
+    background:transparent;color:var(--dim);border-radius:6px;font-size:11px;
     cursor:pointer;transition:all .15s;}
-  #addBtn:hover{background:rgba(255,255,255,.06);color:#ccc;
-    border-color:rgba(255,255,255,.35);}
+  #addBtn:hover{background:rgba(255,255,255,.05);color:var(--txt);
+    border-color:rgba(255,255,255,.3);}
+  #hideAllBtn{width:78px;flex-shrink:0;padding:7px 0;border-radius:6px;
+    border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--dim);
+    font-size:11px;cursor:pointer;transition:all .15s;}
+  #hideAllBtn:hover{background:rgba(138,180,248,.12);color:var(--acc);
+    border-color:rgba(138,180,248,.35);}
+  #hideAllBtn.allhidden{background:rgba(138,180,248,.16);color:var(--acc);
+    border-color:rgba(138,180,248,.4);}
   #resetBtn{width:36px;flex-shrink:0;padding:7px 0;border-radius:6px;
-    border:1px solid rgba(255,255,255,.15);background:transparent;color:#999;
+    border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--dim);
     font-size:12px;cursor:pointer;transition:all .15s;}
-  #resetBtn:hover{background:rgba(255,120,120,.15);color:#f99;
-    border-color:rgba(255,120,120,.35);}
+  #resetBtn:hover{background:rgba(255,255,255,.08);color:var(--txt);
+    border-color:rgba(255,255,255,.22);}
 
   #error{position:fixed;inset:0;display:none;align-items:center;
     justify-content:center;background:#050508;color:#f88;padding:24px;
@@ -106,7 +131,7 @@
 <div id="hud">
   <div class="title">柏拉图立体 · 相对内嵌</div>
   <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
-  <div class="hint">右侧编辑每层<br>类型 / 相对 / Padding / 面·边·点透明度<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+  <div class="hint">右侧编辑每层<br>类型 / 相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>删除会弹窗确认<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
 </div>
 
 <div id="panel">
@@ -114,12 +139,14 @@
   <div id="layerList"></div>
   <div id="btnRow">
     <button id="addBtn">+ 添加层</button>
+    <button id="hideAllBtn" title="一键隐藏全部层 / 恢复（H 键）">隐藏全部</button>
     <button id="resetBtn" title="恢复默认并清除本地保存">↺</button>
   </div>
 </div>
 
 <div id="error">加载失败：请检查浏览器是否支持 WebGL / 网络是否可访问 unpkg.com</div>
 
+<script src="dialog.js"></script>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
 </script>
@@ -210,10 +237,10 @@ const MAX_LAYERS = 12;
 const MIN_OPACITY = 0.001;
 
 const DEFAULT_LAYERS = [
-  { type: 'Cube',                 padding: 0, relTo: null, opacityFace: null, opacityEdge: null, opacityDot: null },
-  { type: 'StellatedTetrahedron', padding: 0, relTo: 0,    opacityFace: null, opacityEdge: null, opacityDot: null },
-  { type: 'Dodecahedron',         padding: 0, relTo: 1,    opacityFace: null, opacityEdge: null, opacityDot: null },
-  { type: 'Icosahedron',          padding: 0, relTo: 2,    opacityFace: null, opacityEdge: null, opacityDot: null },
+  { type: 'Cube',                 padding: 0, relTo: null, opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
+  { type: 'StellatedTetrahedron', padding: 0, relTo: 0,    opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
+  { type: 'Dodecahedron',         padding: 0, relTo: 1,    opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
+  { type: 'Icosahedron',          padding: 0, relTo: 2,    opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
 ];
 
 const OPS_DEF = [
@@ -275,9 +302,16 @@ function computeRadii() {
   return radii;
 }
 
+function isLayerHidden(k) {
+  return !!(layerDefs[k] && layerDefs[k].hidden);
+}
+
+// 参与渲染的层：既没有被手动隐藏，半径也达到可见阈值
+// 手动隐藏不影响半径计算（几何层级保持不变），只影响是否生成 mesh
 function getVisibleOrder(radii) {
   const vis = [];
   for (let k = 0; k < radii.length; k++) {
+    if (isLayerHidden(k)) continue;
     if (radii[k] >= MIN_VISIBLE_R) vis.push(k);
   }
   vis.sort((a, b) => radii[b] - radii[a]);
@@ -336,6 +370,7 @@ function loadState() {
       opacityFace: numOrNull(L.opacityFace),
       opacityEdge: numOrNull(L.opacityEdge),
       opacityDot:  numOrNull(L.opacityDot),
+      hidden: !!L.hidden,
     });
     if (out.length >= MAX_LAYERS) break;
   }
@@ -498,6 +533,16 @@ function rebuild() {
 }
 
 // ---------- 面板 ----------
+function eyeIcon(hidden) {
+  const slash = hidden
+    ? '<path d="M3.5 3.5 L20.5 20.5" stroke="#e08585" stroke-width="2.2"/>'
+    : '';
+  return `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 12s3.8-6.6 10-6.6S22 12 22 12s-3.8 6.6-10 6.6S2 12 2 12z"/>
+    <circle cx="12" cy="12" r="2.8"/>${slash}</svg>`;
+}
+
 function rebuildPanel() {
   const list = document.getElementById('layerList');
   const radii = currentRadii;
@@ -509,22 +554,26 @@ function rebuildPanel() {
   for (let k = 0; k < layerDefs.length; k++) {
     const L = layerDefs[k];
     const r = radii[k];
-    const isVisible = r >= MIN_VISIBLE_R;
+    const hidden = !!L.hidden;
+    const isVisible = r >= MIN_VISIBLE_R && !hidden;
     const isRoot = (L.relTo === null || L.relTo === undefined || L.relTo < 0);
     const vi = visibleIdx.indexOf(k);
     const auto = (vi >= 0) ? autoOps(vi, nVis) : AUTO_FALLBACK;
 
     let cardCls = 'layerCard';
     if (!isVisible) cardCls += ' hidden-layer';
+    if (hidden) cardCls += ' user-hidden';
 
     html += `<div class="${cardCls}" data-idx="${k}">`;
 
     html += `<div class="lhead">`;
     html += `<span class="lname">层 ${k + 1}${isRoot ? ' · 根' : ''}</span>`;
-    html += `<span class="lradius">${isVisible ? 'r=' + r.toFixed(4) : '不可见'}</span>`;
+    html += `<span class="lradius">${hidden ? '已隐藏' : (r >= MIN_VISIBLE_R ? 'r=' + r.toFixed(4) : '不可见')}</span>`;
+    html += `<button class="leye ${hidden ? 'off' : 'on'}" data-act="vis" data-idx="${k}"
+      title="${hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）'}">${eyeIcon(hidden)}</button>`;
     html += layerDefs.length > 1
-      ? `<button class="ldel" data-act="del" data-idx="${k}">×</button>`
-      : `<button class="ldel" disabled>×</button>`;
+      ? `<button class="ldel" data-act="del" data-idx="${k}" title="删除该层（会弹出确认框）">×</button>`
+      : `<button class="ldel" disabled title="至少保留一层">×</button>`;
     html += `</div>`;
 
     html += `<div class="ltypes">`;
@@ -557,6 +606,7 @@ function rebuildPanel() {
       const val = isAuto ? auto[op.kind] : raw;
       const pct = Math.round(val * 100);
       html += `<div class="lrowLine op-${op.kind}">`;
+      html += `<i class="mk mk-${op.kind}"></i>`;
       html += `<label>${op.label}</label>`;
       html += `<input type="range" data-act="${op.act}" data-idx="${k}" min="0" max="100" step="1" value="${pct}">`;
       html += `<span class="lval${isAuto ? ' auto' : ''}">${isAuto ? 'auto' : pct + '%'}</span>`;
@@ -569,9 +619,68 @@ function rebuildPanel() {
   }
   list.innerHTML = html;
   bindPanelEvents(list);
+  updateHideAllBtn();
+}
+
+// ---------- 隐藏 / 显示 ----------
+// 一键全隐：记录当前每层的隐藏状态，"全部显示"时原样恢复，
+// 不会破坏单独设置过的面/边/点透明度，也不丢每层的隐藏偏好。
+let hideAllSnapshot = null;
+
+function allHidden() {
+  return layerDefs.length > 0 && layerDefs.every(L => !!L.hidden);
+}
+
+function toggleHideAll() {
+  if (allHidden()) {
+    if (hideAllSnapshot) {
+      hideAllSnapshot.forEach((h, i) => { if (layerDefs[i]) layerDefs[i].hidden = h; });
+    } else {
+      for (const L of layerDefs) L.hidden = false;
+    }
+    hideAllSnapshot = null;
+  } else {
+    hideAllSnapshot = layerDefs.map(L => !!L.hidden);
+    for (const L of layerDefs) L.hidden = true;
+  }
+  rebuild();
+  scheduleSave();
+}
+
+function updateHideAllBtn() {
+  const btn = document.getElementById('hideAllBtn');
+  if (!btn) return;
+  const all = allHidden();
+  btn.textContent = all ? '全部显示' : '隐藏全部';
+  btn.classList.toggle('allhidden', all);
+}
+
+// ---------- 对话框封装（dialog.js） ----------
+// dialog.js 未加载成功时退回原生 confirm，保证功能不中断
+const hasDialog = typeof window !== 'undefined' && !!window.Dialog;
+
+function askConfirm(message, opts) {
+  if (hasDialog) return window.Dialog.confirm(message, opts);
+  return Promise.resolve(window.confirm(message));
+}
+
+function notify(message, opts) {
+  if (hasDialog) return window.Dialog.alert(message, opts);
+  window.alert(message);
+  return Promise.resolve();
 }
 
 function bindPanelEvents(list) {
+  list.querySelectorAll('[data-act="vis"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.idx;
+      layerDefs[idx].hidden = !layerDefs[idx].hidden;
+      hideAllSnapshot = null;   // 手动改动后取消"全隐快照"
+      rebuild();
+      scheduleSave();
+    });
+  });
+
   list.querySelectorAll('[data-act="type"]').forEach(btn => {
     btn.addEventListener('click', () => {
       layerDefs[+btn.dataset.idx].type = btn.dataset.type;
@@ -625,14 +734,24 @@ function bindPanelEvents(list) {
   });
 
   list.querySelectorAll('[data-act="del"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (layerDefs.length <= 1) return;
+    btn.addEventListener('click', async () => {
       const del = +btn.dataset.idx;
+      if (layerDefs.length <= 1) {
+        await notify('至少保留一层。');
+        return;
+      }
+      const L = layerDefs[del];
+      const ok = await askConfirm(
+        `删除「层 ${del + 1} · ${POLY[L.type].name}」？\n该层及其透明度设置将被移除。`,
+        { title: '删除确认', okText: '删除', cancelText: '取消', danger: true }
+      );
+      if (!ok) return;
       layerDefs.splice(del, 1);
-      for (const L of layerDefs) {
-        if (L.relTo === null || L.relTo === undefined || L.relTo < 0) continue;
-        if (L.relTo === del) L.relTo = del > 0 ? del - 1 : null;
-        else if (L.relTo > del) L.relTo -= 1;
+      hideAllSnapshot = null;
+      for (const L2 of layerDefs) {
+        if (L2.relTo === null || L2.relTo === undefined || L2.relTo < 0) continue;
+        if (L2.relTo === del) L2.relTo = del > 0 ? del - 1 : null;
+        else if (L2.relTo > del) L2.relTo -= 1;
       }
       rebuild();
       scheduleSave();
@@ -644,15 +763,15 @@ function updateRadiusLabels() {
   const cards = document.querySelectorAll('#layerList .layerCard');
   cards.forEach((card, i) => {
     const r = currentRadii[i];
+    const hidden = isLayerHidden(i);
     const el = card.querySelector('.lradius');
-    if (!el) return;
-    if (r >= MIN_VISIBLE_R) {
-      el.textContent = 'r=' + r.toFixed(4);
-      card.classList.remove('hidden-layer');
-    } else {
-      el.textContent = '不可见';
-      card.classList.add('hidden-layer');
+    if (el) {
+      if (hidden) el.textContent = '已隐藏';
+      else if (r >= MIN_VISIBLE_R) el.textContent = 'r=' + r.toFixed(4);
+      else el.textContent = '不可见';
     }
+    card.classList.toggle('user-hidden', hidden);
+    card.classList.toggle('hidden-layer', !hidden && r < MIN_VISIBLE_R);
   });
   updateHUD();
 }
@@ -757,7 +876,7 @@ function bindEvents() {
     const newIdx = layerDefs.length;
     layerDefs.push({
       type: randomType(prevType), padding: 0, relTo: newIdx - 1,
-      opacityFace: null, opacityEdge: null, opacityDot: null,
+      opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false,
     });
     rebuild();
     scheduleSave();
@@ -765,17 +884,28 @@ function bindEvents() {
     list.scrollTop = list.scrollHeight;
   });
 
-  document.getElementById('resetBtn').addEventListener('click', () => {
-    if (!confirm('恢复默认层栈并清除已保存的参数？')) return;
+  document.getElementById('hideAllBtn').addEventListener('click', () => {
+    toggleHideAll();
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', async () => {
+    const ok = await askConfirm('恢复默认层栈并清除已保存的参数？', {
+      title: '恢复默认', okText: '恢复', cancelText: '取消', danger: true,
+    });
+    if (!ok) return;
     layerDefs = DEFAULT_LAYERS.map(o => ({ ...o }));
     rotX = 0.15; rotY = 0.3; autoRot = 0; camZ = 3.4;
     camera.position.z = camZ;
+    hideAllSnapshot = null;
     clearState();
     rebuild();
   });
 
   window.addEventListener('keydown', e => {
-    if (e.code === 'Space') { e.preventDefault(); spaceHeld = !spaceHeld; }
+    if (e.code === 'Space') { e.preventDefault(); spaceHeld = !spaceHeld; return; }
+    const tag = (e.target && e.target.tagName || '').toUpperCase();
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (e.key === 'h' || e.key === 'H') toggleHideAll();
   });
 }
 
