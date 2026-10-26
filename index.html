@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MKB 场 · 点云可视化</title>
+<style>
+  html,body{margin:0;height:100%;background:#07070b;overflow:hidden;font-family:system-ui,sans-serif;}
+  #c{display:block;width:100%;height:100%;cursor:grab;touch-action:none;}
+  #c:active{cursor:grabbing;}
+  #ui{position:fixed;top:12px;left:12px;background:rgba(15,15,25,.82);color:#ccc;
+      padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.7;
+      backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);width:200px;}
+  #ui .row{display:flex;justify-content:space-between;align-items:center;margin-top:6px;}
+  #ui input[type=range]{width:100%;margin:2px 0;}
+  #ui button{margin-top:8px;width:100%;padding:6px;background:#2a2a3a;color:#ddd;
+      border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:12px;}
+  #ui button:hover{background:#35354a;}
+  .val{color:#8ab4f8;font-variant-numeric:tabular-nums;}
+  .title{font-weight:600;color:#eee;font-size:13px;margin-bottom:4px;}
+  .hint{color:#777;font-size:11px;margin-top:6px;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div class="title">MKB 场 · 点云</div>
+  <div class="row"><span>点数</span><span class="val" id="vN">12000</span></div>
+  <input type="range" id="sN" min="2000" max="30000" step="1000" value="12000">
+  <div class="row"><span>噪声尺度</span><span class="val" id="vF">1.2</span></div>
+  <input type="range" id="sF" min="0.3" max="4" step="0.1" value="1.2">
+  <div class="row"><span>控制点权重</span><span class="val" id="vW">0.40</span></div>
+  <input type="range" id="sW" min="0" max="1" step="0.05" value="0.4">
+  <div class="row"><span>点大小</span><span class="val" id="vS">1.0</span></div>
+  <input type="range" id="sS" min="0.3" max="2.5" step="0.1" value="1.0">
+  <button id="btnNew">随机新种子</button>
+  <button id="btnCtrl">显示/隐藏控制点</button>
+  <div class="hint">拖动旋转 · 滚轮缩放</div>
+</div>
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth;
+  H = canvas.clientHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+// ---------- 参数 ----------
+let seed = Math.random() * 1000;
+let theta = 0.6, phi = 0.35, zoom = 1.0, dist = 3.0;
+const focal = 2.0;
+let showCtrl = false;
+let noiseScale = 1.2;
+let ctrlWeight = 0.4;
+let pointSize = 1.0;
+let N = 12000;
+
+let ctrl = [];
+let points = [];
+let needRegen = true;
+
+// ---------- 3D value noise + fbm ----------
+function hash3(x, y, z) {
+  let h = (x * 374761393 + y * 668265263 + z * 2147483647 + seed * 7919) | 0;
+  h = (h ^ (h >> 13)) * 1274126177;
+  h = h ^ (h >> 16);
+  return (h >>> 0) / 4294967295;
+}
+function smooth(t) { return t * t * (3 - 2 * t); }
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = smooth(xf), v = smooth(yf), w = smooth(zf);
+  const c000 = hash3(xi, yi, zi),     c100 = hash3(xi+1, yi, zi);
+  const c010 = hash3(xi, yi+1, zi),   c110 = hash3(xi+1, yi+1, zi);
+  const c001 = hash3(xi, yi, zi+1),   c101 = hash3(xi+1, yi, zi+1);
+  const c011 = hash3(xi, yi+1, zi+1), c111 = hash3(xi+1, yi+1, zi+1);
+  const x00 = c000 + (c100 - c000) * u;
+  const x10 = c010 + (c110 - c010) * u;
+  const x01 = c001 + (c101 - c001) * u;
+  const x11 = c011 + (c111 - c011) * u;
+  const y0 = x00 + (x10 - x00) * v;
+  const y1 = x01 + (x11 - x01) * v;
+  return y0 + (y1 - y0) * w;
+}
+function fbm(x, y, z) {
+  let n = 0, amp = 0.5, freq = 1;
+  for (let i = 0; i < 4; i++) {
+    n += amp * noise3(x * freq, y * freq, z * freq);
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return n;
+}
+
+// ---------- 27 控制点（8 顶点 + 12 边中点 + 6 面心 + 中心） ----------
+function makeCtrl() {
+  const pts = [];
+  const vals = [-1, 0, 1];
+  for (const x of vals) for (const y of vals) for (const z of vals) {
+    const zeros = (x === 0 ? 1 : 0) + (y === 0 ? 1 : 0) + (z === 0 ? 1 : 0);
+    let r, kind;
+    if (zeros === 0)      { r = 0.32; kind = 'v'; }
+    else if (zeros === 1) { r = 0.36; kind = 'e'; }
+    else if (zeros === 2) { r = 0.42; kind = 'f'; }
+    else                  { r = 0.50; kind = 'c'; }
+    pts.push({ x, y, z, w: (Math.random() - 0.5) * 2, r, kind });
+  }
+  return pts;
+}
+
+// ---------- 连续场：噪声 + 控制点高斯影响 ----------
+function field(x, y, z) {
+  const n = fbm(x * noiseScale + seed, y * noiseScale, z * noiseScale);
+  let c = 0;
+  for (let i = 0; i < ctrl.length; i++) {
+    const p = ctrl[i];
+    const dx = x - p.x, dy = y - p.y, dz = z - p.z;
+    const d2 = dx*dx + dy*dy + dz*dz;
+    c += p.w * Math.exp(-d2 / (2 * p.r * p.r));
+  }
+  return n * (1 - ctrlWeight) + c * ctrlWeight;
+}
+
+// ---------- 点云采样 ----------
+function makePoints() {
+  ctrl = makeCtrl();
+  points = [];
+  const S = 1.15;
+  for (let i = 0; i < N; i++) {
+    const x = (Math.random() * 2 - 1) * S;
+    const y = (Math.random() * 2 - 1) * S;
+    const z = (Math.random() * 2 - 1) * S;
+    const v = field(x, y, z);
+    points.push({ x, y, z, v });
+  }
+  let minV = Infinity, maxV = -Infinity;
+  for (const p of points) {
+    if (p.v < minV) minV = p.v;
+    if (p.v > maxV) maxV = p.v;
+  }
+  const span = (maxV - minV) || 1;
+  for (const p of points) p.t = (p.v - minV) / span;
+  for (const p of ctrl) {
+    p.v = field(p.x, p.y, p.z);
+    p.t = (p.v - minV) / span;
+  }
+}
+
+// ---------- 连续色带 LUT ----------
+const LUT = [];
+(function buildLUT() {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    const h = (0.58 + t * 1.45) % 1;          // 青蓝 → 紫 → 红
+    const s = 0.75 + 0.15 * Math.sin(t * Math.PI);
+    const l = 0.22 + 0.58 * t;
+    LUT.push(`hsl(${(h*360)|0}, ${(s*100)|0}%, ${(l*100)|0}%)`);
+  }
+})();
+
+// ---------- 渲染 ----------
+function render() {
+  ctx.fillStyle = '#07070b';
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const screenScale = Math.min(W, H) * 0.5 * zoom;
+  const cosT = Math.cos(theta), sinT = Math.sin(theta);
+  const cosP = Math.cos(phi), sinP = Math.sin(phi);
+
+  const proj = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const x1 =  p.x * cosT + p.z * sinT;
+    const z1 = -p.x * sinT + p.z * cosT;
+    const y1 = p.y * cosP - z1 * sinP;
+    const z2 = p.y * sinP + z1 * cosP;
+    const depth = z2 + dist;
+    if (depth < 0.15) continue;
+    const s = focal / depth;
+    proj.push({
+      sx: cx + x1 * s * screenScale,
+      sy: cy + y1 * s * screenScale,
+      z: z2,
+      t: p.t,
+      s
+    });
+  }
+  proj.sort((a, b) => b.z - a.z);   // 远先画
+
+  const baseR = Math.max(0.5, Math.min(W, H) * 0.0022 * pointSize);
+  const useRect = proj.length > 8000;
+
+  for (let i = 0; i < proj.length; i++) {
+    const q = proj[i];
+    const r = baseR * q.s * 2.2;
+    const idx = (q.t * 255) | 0;
+    ctx.fillStyle = LUT[idx];
+    if (useRect || r < 1.0) {
+      ctx.fillRect(q.sx - r, q.sy - r, r * 2, r * 2);
+    } else {
+      ctx.beginPath();
+      ctx.arc(q.sx, q.sy, r, 0, 6.283);
+      ctx.fill();
+    }
+  }
+
+  // 控制点叠加
+  if (showCtrl) {
+    for (let i = 0; i < ctrl.length; i++) {
+      const p = ctrl[i];
+      const x1 =  p.x * cosT + p.z * sinT;
+      const z1 = -p.x * sinT + p.z * cosT;
+      const y1 = p.y * cosP - z1 * sinP;
+      const z2 = p.y * sinP + z1 * cosP;
+      const depth = z2 + dist;
+      if (depth < 0.15) continue;
+      const s = focal / depth;
+      const sx = cx + x1 * s * screenScale;
+      const sy = cy + y1 * s * screenScale;
+      const r = Math.max(2.5, baseR * s * 5);
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, 6.283);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.stroke();
+    }
+  }
+}
+
+// ---------- 交互 ----------
+let dragging = false, lastX = 0, lastY = 0;
+canvas.addEventListener('pointerdown', e => {
+  dragging = true;
+  lastX = e.clientX; lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX;
+  const dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  theta -= dx * 0.008;
+  phi   -= dy * 0.008;
+  phi = Math.max(-1.45, Math.min(1.45, phi));
+});
+canvas.addEventListener('pointerup', e => {
+  dragging = false;
+  try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom *= Math.exp(-e.deltaY * 0.001);
+  zoom = Math.max(0.3, Math.min(5, zoom));
+}, { passive: false });
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('sN').addEventListener('input', e => {
+  N = +e.target.value; $('vN').textContent = N; needRegen = true;
+});
+$('sF').addEventListener('input', e => {
+  noiseScale = +e.target.value; $('vF').textContent = noiseScale.toFixed(1); needRegen = true;
+});
+$('sW').addEventListener('input', e => {
+  ctrlWeight = +e.target.value; $('vW').textContent = ctrlWeight.toFixed(2); needRegen = true;
+});
+$('sS').addEventListener('input', e => {
+  pointSize = +e.target.value; $('vS').textContent = pointSize.toFixed(1);
+});
+$('btnNew').addEventListener('click', () => {
+  seed = Math.random() * 1000; needRegen = true;
+});
+$('btnCtrl').addEventListener('click', () => {
+  showCtrl = !showCtrl;
+});
+
+// ---------- 主循环 ----------
+function loop() {
+  if (needRegen) {
+    makePoints();
+    needRegen = false;
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+resize();
+makePoints();
+loop();
+
+})();
+</script>
+</body>
+</html>

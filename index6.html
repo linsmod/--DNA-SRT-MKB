@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MKB 场 · 球面观测 · 多通道等值面</title>
+<style>
+  html,body{margin:0;height:100%;background:#050508;overflow:hidden;
+    font-family:system-ui,sans-serif;}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
+  #overlay{pointer-events:none;}
+  #ui{position:fixed;top:12px;left:12px;background:rgba(12,12,22,.9);color:#ccc;
+    padding:12px 14px;border-radius:12px;font-size:12px;line-height:1.65;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);width:235px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:10;max-height:calc(100vh - 24px);
+    overflow-y:auto;}
+  #ui .title{font-weight:600;color:#eee;font-size:13px;margin-bottom:8px;}
+  #ui .row{display:flex;justify-content:space-between;margin-top:6px;}
+  #ui input[type=range]{width:100%;margin:2px 0;accent-color:#8ab4f8;}
+  #ui button{margin-top:4px;width:100%;padding:5px;background:#23233a;color:#ddd;
+    border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:11px;}
+  #ui button:hover{background:#2f2f4a;}
+  #ui button.active{background:#3a4a7a;border-color:#8ab4f8;color:#fff;}
+  #ui .group{display:flex;gap:4px;margin-top:4px;}
+  #ui .group button{margin-top:0;flex:1;}
+  .val{color:#8ab4f8;font-variant-numeric:tabular-nums;}
+  .sec{color:#888;font-size:10px;margin-top:10px;letter-spacing:.5px;text-transform:uppercase;}
+  .hint{color:#666;font-size:10px;margin-top:8px;line-height:1.5;}
+  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    color:#f88;font-size:14px;background:#050508;z-index:100;text-align:center;padding:24px;}
+</style>
+</head>
+<body>
+<canvas id="gpu"></canvas>
+<canvas id="overlay"></canvas>
+<div id="ui">
+  <div class="title">MKB 场 · 球面观测</div>
+  <div class="sec">观测面</div>
+  <div class="group">
+    <button id="m0" class="active">切片</button>
+    <button id="m1">体积</button>
+  </div>
+  <div class="group">
+    <button id="m2">等值面</button>
+    <button id="m3">球面</button>
+  </div>
+  <div class="sec">着色</div>
+  <div class="group">
+    <button id="c0" class="active">SRT</button>
+    <button id="c1">标量</button>
+  </div>
+  <div class="sec">通道</div>
+  <div class="group">
+    <button id="chS" class="active">S</button>
+    <button id="chR" class="active">R</button>
+    <button id="chT" class="active">T</button>
+  </div>
+  <div class="row"><span>切片深度</span><span class="val" id="vD">0.00</span></div>
+  <input type="range" id="sD" min="-1.1" max="1.1" step="0.01" value="0">
+  <div class="row"><span>密度</span><span class="val" id="vDen">0.10</span></div>
+  <input type="range" id="sDen" min="0.02" max="0.4" step="0.01" value="0.1">
+  <div class="row"><span>等值面 iso</span><span class="val" id="vIso">0.50</span></div>
+  <input type="range" id="sIso" min="0.05" max="0.95" step="0.01" value="0.5">
+  <div class="row"><span>球面半径</span><span class="val" id="vRad">1.15</span></div>
+  <input type="range" id="sRad" min="0.4" max="1.24" step="0.01" value="1.15">
+  <div class="sec">场</div>
+  <div class="row"><span>噪声尺度</span><span class="val" id="vF">1.4</span></div>
+  <input type="range" id="sF" min="0.3" max="4" step="0.1" value="1.4">
+  <div class="row"><span>控制点权重</span><span class="val" id="vW">0.55</span></div>
+  <input type="range" id="sW" min="0" max="1" step="0.05" value="0.55">
+  <div class="sec">BC 动态</div>
+  <div class="row"><span>相位速度</span><span class="val" id="vSp">0.00</span></div>
+  <input type="range" id="sSp" min="0" max="2" step="0.05" value="0">
+  <div class="row"><span>骨架透明度</span><span class="val" id="vL">0.35</span></div>
+  <input type="range" id="sL" min="0" max="1" step="0.05" value="0.35">
+  <button id="btnNew">随机新种子</button>
+  <button id="btnReset">重置控制点</button>
+  <div class="group">
+    <button id="btnExport">导出</button>
+    <button id="btnImport">导入</button>
+  </div>
+  <input type="file" id="fileImport" style="display:none" accept=".json">
+  <div class="hint">拖动旋转 · 滚轮缩放<br>拖动白点编辑控制点<br>球面模式看 SRT 三环</div>
+</div>
+<div id="err"></div>
+
+<script type="module">
+(async () => {
+'use strict';
+const gpuCanvas = document.getElementById('gpu');
+const ov = document.getElementById('overlay');
+const ovCtx = ov.getContext('2d');
+const errEl = document.getElementById('err');
+function fail(msg){ errEl.textContent=msg; errEl.style.display='flex'; throw new Error(msg); }
+if (!navigator.gpu) fail('需要 WebGPU（Chrome 113+ / Edge 113+）。');
+const adapter = await navigator.gpu.requestAdapter();
+if (!adapter) fail('无法获取 adapter。');
+const device = await adapter.requestDevice();
+const format = navigator.gpu.getPreferredCanvasFormat();
+const context = gpuCanvas.getContext('webgpu');
+context.configure({ device, format, alphaMode: 'opaque' });
+
+// ---------- 状态 ----------
+let seed = Math.random() * 1000;
+let theta = 0.65, phi = 0.28, zoom = 1.0;
+const dist = 3.2, focal = 2.0;
+let noiseScale = 1.4, ctrlWeight = 0.55, lineAlpha = 0.35;
+let sliceZ = 0.0, density = 0.10, isoValue = 0.50, sphereRadius = 1.15;
+let mode = 0;        // 0 切片 1 体积 2 等值面 3 球面
+let colorMode = 0;   // 0 SRT 1 标量
+let chanS = 1, chanR = 1, chanT = 1;
+let bcSpeed = 0.0, phase = 0.0;
+const FIELD_RES = 64, FIELD_EXT = 1.25, WG = 4;
+
+// ---------- 控制点 ----------
+const CTRL_N = 27;
+const ctrl = [], ctrlInit = [];
+for (const x of [-1,0,1]) for (const y of [-1,0,1]) for (const z of [-1,0,1]) {
+  const zeros = (x===0?1:0)+(y===0?1:0)+(z===0?1:0);
+  let r, S, R, T, lvl;
+  if (zeros===0)      { r=0.30; S=0.95; R=0.25; T=0.20; lvl=0; }
+  else if (zeros===1) { r=0.34; S=0.30; R=0.95; T=0.25; lvl=1; }
+  else if (zeros===2) { r=0.40; S=0.25; R=0.30; T=0.95; lvl=2; }
+  else                { r=0.48; S=0.60; R=0.60; T=0.60; lvl=3; }
+  ctrlInit.push({ x, y, z, r, S, R, T, vis: 1.0, lvl });
+}
+for (const p of ctrlInit) ctrl.push({ ...p });
+
+const ctrlData = new Float32Array(CTRL_N * 8);
+const ctrlBuffer = device.createBuffer({
+  size: ctrlData.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+});
+function writeCtrlBuffer() {
+  for (let i=0; i<CTRL_N; i++) {
+    const p = ctrl[i];
+    ctrlData[i*8+0]=p.x; ctrlData[i*8+1]=p.y; ctrlData[i*8+2]=p.z; ctrlData[i*8+3]=p.r;
+    ctrlData[i*8+4]=p.S; ctrlData[i*8+5]=p.R; ctrlData[i*8+6]=p.T; ctrlData[i*8+7]=p.vis;
+  }
+  device.queue.writeBuffer(ctrlBuffer, 0, ctrlData);
+}
+writeCtrlBuffer();
+
+// ---------- 场纹理 ----------
+let fieldTex = device.createTexture({
+  size: [FIELD_RES, FIELD_RES, FIELD_RES],
+  dimension: '3d', format: 'rgba8unorm',
+  usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+});
+
+// ---------- Compute ----------
+const computeCode = `
+struct CtrlPoint { pos: vec4<f32>, srtv: vec4<f32> };
+struct CParams { a: vec4<f32>, b: vec4<f32> };
+@group(0) @binding(0) var<storage, read> ctrls: array<CtrlPoint, 27>;
+@group(0) @binding(1) var output: texture_storage_3d<rgba8unorm, write>;
+@group(0) @binding(2) var<uniform> cp: CParams;
+
+fn hash3(p: vec3<f32>) -> f32 {
+  return fract(sin(dot(p, vec3<f32>(12.9898, 78.233, 37.719))) * 43758.5453);
+}
+fn vnoise(p: vec3<f32>) -> f32 {
+  let i = floor(p); let f = fract(p);
+  let u = f*f*(3.0-2.0*f);
+  let n000=hash3(i+vec3<f32>(0,0,0)); let n100=hash3(i+vec3<f32>(1,0,0));
+  let n010=hash3(i+vec3<f32>(0,1,0)); let n110=hash3(i+vec3<f32>(1,1,0));
+  let n001=hash3(i+vec3<f32>(0,0,1)); let n101=hash3(i+vec3<f32>(1,0,1));
+  let n011=hash3(i+vec3<f32>(0,1,1)); let n111=hash3(i+vec3<f32>(1,1,1));
+  let a = mix(mix(n000,n100,u.x), mix(n010,n110,u.x), u.y);
+  let b = mix(mix(n001,n101,u.x), mix(n011,n111,u.x), u.y);
+  return mix(a,b,u.z);
+}
+fn fbm(p: vec3<f32>) -> f32 {
+  var n=0.0; var amp=0.5; var f=1.0;
+  for (var i=0;i<4;i=i+1){ n+=amp*vnoise(p*f); amp*=0.5; f*=2.0; }
+  return n;
+}
+@compute @workgroup_size(4,4,4)
+fn cs(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let N=64u;
+  if (gid.x>=N||gid.y>=N||gid.z>=N) { return; }
+  let ext=cp.a.x; let ns=cp.a.y; let w=cp.a.z; let sd=cp.a.w;
+  let step=2.0*ext/f32(N-1u);
+  let p=vec3<f32>(f32(gid.x),f32(gid.y),f32(gid.z))*step-vec3<f32>(ext);
+  let nS=fbm(p*ns+vec3<f32>(sd,0.0,0.0));
+  let nR=fbm(p*ns+vec3<f32>(sd+100.0,0.0,0.0));
+  let nT=fbm(p*ns+vec3<f32>(sd+200.0,0.0,0.0));
+  let nV=fbm(p*ns+vec3<f32>(sd+300.0,0.0,0.0));
+  var s=0.0; var r=0.0; var t=0.0; var v=0.0;
+  for (var i=0u;i<27u;i=i+1u){
+    let cpi=ctrls[i];
+    let d=p-cpi.pos.xyz;
+    let g=exp(-dot(d,d)/(2.0*cpi.pos.w*cpi.pos.w));
+    s+=cpi.srtv.x*g; r+=cpi.srtv.y*g; t+=cpi.srtv.z*g; v+=cpi.srtv.w*g;
+  }
+  let ph=cp.b.x;
+  let sw=0.3+0.7*(0.5+0.5*sin(ph));
+  let rw=0.3+0.7*(0.5+0.5*sin(ph+2.094));
+  let tw=0.3+0.7*(0.5+0.5*sin(ph+4.189));
+  s*=sw; r*=rw; t*=tw;
+  let oS=nS*(1.0-w)+s*w;
+  let oR=nR*(1.0-w)+r*w;
+  let oT=nT*(1.0-w)+t*w;
+  let oV=nV*(1.0-w)+v*w;
+  textureStore(output, vec3<i32>(gid), vec4<f32>(
+    clamp(oS,0.0,1.0), clamp(oR,0.0,1.0), clamp(oT,0.0,1.0), clamp(oV,0.0,1.0)));
+}
+`;
+const computeModule = device.createShaderModule({ code: computeCode });
+const computePipeline = await device.createComputePipelineAsync({
+  layout: 'auto', compute: { module: computeModule, entryPoint: 'cs' },
+});
+const cParamsData = new Float32Array(8);
+const cParamsBuffer = device.createBuffer({
+  size: cParamsData.byteLength,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+const computeBindGroup = device.createBindGroup({
+  layout: computePipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: ctrlBuffer } },
+    { binding: 1, resource: fieldTex.createView() },
+    { binding: 2, resource: { buffer: cParamsBuffer } },
+  ],
+});
+function dispatchCompute() {
+  cParamsData[0]=FIELD_EXT; cParamsData[1]=noiseScale;
+  cParamsData[2]=ctrlWeight; cParamsData[3]=seed;
+  cParamsData[4]=phase;
+  device.queue.writeBuffer(cParamsBuffer, 0, cParamsData);
+  const enc = device.createCommandEncoder();
+  const pass = enc.beginComputePass();
+  pass.setPipeline(computePipeline);
+  pass.setBindGroup(0, computeBindGroup);
+  const g = Math.ceil(FIELD_RES / WG);
+  pass.dispatchWorkgroups(g, g, g);
+  pass.end();
+  device.queue.submit([enc.finish()]);
+}
+
+// ---------- Render shader ----------
+const shaderCode = `
+struct Uniforms {
+  camera: vec4<f32>, params: vec4<f32>, extra: vec4<f32>,
+  extra2: vec4<f32>, extra3: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> uni: Uniforms;
+@group(0) @binding(1) var fieldTex: texture_3d<f32>;
+@group(0) @binding(2) var fieldSampler: sampler;
+
+struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex fn vs(@builtin(vertex_index) i: u32) -> VSOut {
+  var p = array<vec2<f32>,3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  var o: VSOut; o.pos = vec4<f32>(p[i],0.,1.); o.uv = p[i]*0.5+0.5; return o;
+}
+fn sampleSRT(p: vec3<f32>, ext: f32) -> vec4<f32> {
+  let uvw = p/(2.0*ext)+0.5;
+  if (any(uvw<vec3<f32>(0.)) || any(uvw>vec3<f32>(1.))) { return vec4<f32>(-1.); }
+  return textureSampleLevel(fieldTex, fieldSampler, uvw, 0.0);
+}
+fn sampleScalar(p: vec3<f32>, ext: f32) -> f32 {
+  let s = sampleSRT(p, ext);
+  if (s.x<0.) { return -1.; }
+  return (s.x+s.y+s.z)/3.0;
+}
+fn lut(t: f32) -> vec3<f32> {
+  var s = array<vec4<f32>,7>(
+    vec4<f32>(0.00,0.03,0.05,0.12), vec4<f32>(0.18,0.12,0.24,0.47),
+    vec4<f32>(0.38,0.27,0.51,0.75), vec4<f32>(0.55,0.55,0.35,0.71),
+    vec4<f32>(0.72,0.86,0.31,0.43), vec4<f32>(0.88,0.96,0.59,0.24),
+    vec4<f32>(1.00,1.00,0.92,0.78));
+  var c = s[0].yzw;
+  for (var i=0;i<6;i=i+1) {
+    if (t>=s[i].x && t<=s[i+1].x) {
+      let u=(t-s[i].x)/max(1e-6,s[i+1].x-s[i].x);
+      c=mix(s[i].yzw,s[i+1].yzw,u);
+    }
+  }
+  return c;
+}
+fn shadeSRT(srt: vec3<f32>) -> vec3<f32> {
+  let sC=vec3<f32>(0.40,0.88,1.00);
+  let rC=vec3<f32>(0.88,0.40,1.00);
+  let tC=vec3<f32>(1.00,0.55,0.18);
+  let tot=srt.x+srt.y+srt.z+1e-5;
+  return (sC*srt.x+rC*srt.y+tC*srt.z)/tot;
+}
+fn applyChannel(srt: vec3<f32>) -> vec3<f32> {
+  return srt*vec3<f32>(uni.extra2.y, uni.extra2.z, uni.extra2.w);
+}
+fn shade(p: vec3<f32>, ext: f32) -> vec3<f32> {
+  let s = sampleSRT(p, ext);
+  if (s.x<0.) { return vec3<f32>(0.); }
+  let srt = applyChannel(s.xyz);
+  if (uni.extra2.x < 0.5) { return shadeSRT(srt); }
+  let v = clamp((srt.x+srt.y+srt.z)/3.0, 0., 1.);
+  return lut(v);
+}
+fn gradient(p: vec3<f32>, ext: f32) -> vec3<f32> {
+  let e=1.0/64.0;
+  let dx=sampleScalar(p+vec3<f32>(e,0,0),ext)-sampleScalar(p-vec3<f32>(e,0,0),ext);
+  let dy=sampleScalar(p+vec3<f32>(0,e,0),ext)-sampleScalar(p-vec3<f32>(0,e,0),ext);
+  let dz=sampleScalar(p+vec3<f32>(0,0,e),ext)-sampleScalar(p-vec3<f32>(0,0,e),ext);
+  let g=vec3<f32>(dx,dy,dz);
+  return g/max(1e-5,length(g));
+}
+fn intersectAABB(ro: vec3<f32>, rd: vec3<f32>, bmin: vec3<f32>, bmax: vec3<f32>) -> vec2<f32> {
+  let invD = 1.0/(rd+vec3<f32>(1e-8));
+  let t0=(bmin-ro)*invD; let t1=(bmax-ro)*invD;
+  let tmin=min(t0,t1); let tmax=max(t0,t1);
+  return vec2<f32>(max(max(tmin.x,tmin.y),tmin.z), min(min(tmax.x,tmax.y),tmax.z));
+}
+fn traceIsoMulti(orgW: vec3<f32>, dirW: vec3<f32>, tN: f32, tF: f32, ext: f32, iso: f32, chanMask: vec3<f32>) -> vec4<f32> {
+  let steps = 64;
+  let dt = (tF-tN)/f32(steps);
+  var tPrev = tN;
+  var vPrev = sampleSRT(orgW+dirW*tPrev, ext);
+  if (vPrev.x<0.) { return vec4<f32>(-1.); }
+  for (var i=0;i<steps;i=i+1) {
+    let t = tN+(f32(i)+1.)*dt;
+    if (t>tF) { break; }
+    let v = sampleSRT(orgW+dirW*t, ext);
+    if (v.x<0.) { break; }
+    var hitCh = -1.0;
+    var vp = 0.0; var vc = 0.0;
+    if (chanMask.x>0.5 && (vPrev.x-iso)*(v.x-iso)<=0. && abs(v.x-vPrev.x)>1e-6) {
+      hitCh=0.0; vp=vPrev.x; vc=v.x;
+    } else if (chanMask.y>0.5 && (vPrev.y-iso)*(v.y-iso)<=0. && abs(v.y-vPrev.y)>1e-6) {
+      hitCh=1.0; vp=vPrev.y; vc=v.y;
+    } else if (chanMask.z>0.5 && (vPrev.z-iso)*(v.z-iso)<=0. && abs(v.z-vPrev.z)>1e-6) {
+      hitCh=2.0; vp=vPrev.z; vc=v.z;
+    }
+    if (hitCh>=0.) {
+      var ta=tPrev; var tb=t; var va=vp; var vb=vc;
+      for (var j=0;j<6;j=j+1) {
+        let tm=(ta+tb)*0.5;
+        let vm=sampleSRT(orgW+dirW*tm, ext);
+        var vmv = vm.x;
+        if (hitCh>0.5) { vmv = vm.y; }
+        if (hitCh>1.5) { vmv = vm.z; }
+        if ((va-iso)*(vmv-iso)<=0.) { tb=tm; vb=vmv; } else { ta=tm; va=vmv; }
+      }
+      return vec4<f32>((ta+tb)*0.5, hitCh, 0., 0.);
+    }
+    tPrev = t; vPrev = v;
+  }
+  return vec4<f32>(-1.);
+}
+@fragment fn fs(in: VSOut) -> @location(0) vec4<f32> {
+  let res = vec2<f32>(uni.extra.y, uni.extra.z);
+  let th=uni.camera.x; let ph=uni.camera.y;
+  let zm=uni.camera.z; let ds=uni.camera.w;
+  let sliceZ=uni.params.x; let f=uni.params.y;
+  let ext=uni.params.z; let mode=uni.params.w;
+  let density=uni.extra.x; let iso=uni.extra.w;
+  let radius=uni.extra3.x;
+  let ct=cos(th); let st=sin(th); let cp=cos(ph); let sp=sin(ph);
+  let R = mat3x3<f32>(
+    vec3<f32>(ct,0.,-st),
+    vec3<f32>(st*sp,cp,ct*sp),
+    vec3<f32>(st*cp,-sp,ct*cp)
+  );
+  let Rt = transpose(R);
+  let cx=res.x*0.5; let cy=res.y*0.5;
+  let sc=min(res.x,res.y)*0.5*zm;
+  let sx=(in.uv.x*res.x-cx)/sc;
+  let sy=((1.-in.uv.y)*res.y-cy)/sc;
+  let dirW=Rt*normalize(vec3<f32>(sx,sy,-f));
+  let orgW=Rt*vec3<f32>(0.,0.,ds);
+  let bg=vec3<f32>(0.02,0.02,0.035);
+  var color = bg;
+  let bmin=vec3<f32>(-ext);
+  let bmax=vec3<f32>(ext);
+  let chanMask = vec3<f32>(uni.extra2.y, uni.extra2.z, uni.extra2.w);
+
+  if (mode < 0.5) {
+    if (abs(dirW.z)>1e-5) {
+      let t=(sliceZ-orgW.z)/dirW.z;
+      if (t>0.) {
+        let p=orgW+t*dirW;
+        let s=sampleSRT(p,ext);
+        if (s.x>=0.) {
+          let g=gradient(p,ext);
+          let light=clamp(0.65+0.35*dot(g,normalize(vec3<f32>(0.4,0.7,0.6))),0.,1.);
+          color = shade(p,ext)*light;
+        }
+      }
+    }
+  } else if (mode < 1.5) {
+    let tt=intersectAABB(orgW,dirW,bmin,bmax);
+    let tN=max(tt.x,0.); let tF=tt.y;
+    if (tF>tN) {
+      let steps=96; let dt=(tF-tN)/f32(steps);
+      var accum=vec3<f32>(0.); var trans=1.0;
+      for (var i=0;i<steps;i=i+1) {
+        let p=orgW+dirW*(tN+(f32(i)+0.5)*dt);
+        let s=sampleSRT(p,ext);
+        if (s.x>=0.) {
+          let srt=applyChannel(s.xyz);
+          var c=lut(clamp((srt.x+srt.y+srt.z)/3.0,0.,1.));
+          if (uni.extra2.x<0.5) { c=shadeSRT(srt); }
+          let a=clamp(s.w*density*(0.5+0.5*(srt.x+srt.y+srt.z)),0.,0.30);
+          accum += trans*a*c; trans *= (1.-a);
+          if (trans<0.02) { break; }
+        }
+      }
+      color = accum+bg*trans;
+    }
+  } else if (mode < 2.5) {
+    let tt=intersectAABB(orgW,dirW,bmin,bmax);
+    let tN=max(tt.x,0.); let tF=tt.y;
+    if (tF>tN) {
+      let hit = traceIsoMulti(orgW,dirW,tN,tF,ext,iso,chanMask);
+      if (hit.x>0.) {
+        let pHit=orgW+dirW*hit.x;
+        let n=gradient(pHit,ext);
+        var base=vec3<f32>(0.40,0.88,1.00);
+        if (hit.y>0.5) { base=vec3<f32>(0.88,0.40,1.00); }
+        if (hit.y>1.5) { base=vec3<f32>(1.00,0.55,0.18); }
+        let light=clamp(0.25+0.75*max(dot(n,normalize(vec3<f32>(0.4,0.7,0.5))),0.),0.,1.);
+        let rim=pow(1.-abs(dot(n,-dirW)),2.);
+        color = base*light + rim*vec3<f32>(0.15,0.20,0.35);
+      }
+    }
+  } else {
+    let b = dot(orgW,dirW);
+    let c = dot(orgW,orgW) - radius*radius;
+    let disc = b*b - c;
+    if (disc > 0.) {
+      let sq = sqrt(disc);
+      var t = -b - sq;
+      if (t < 0.) { t = -b + sq; }
+      if (t > 0.) {
+        let pHit = orgW + dirW*t;
+        let n = normalize(pHit);
+        let s = sampleSRT(pHit, ext);
+        if (s.x >= 0.) {
+          let srt = applyChannel(s.xyz);
+          var base = lut(clamp((srt.x+srt.y+srt.z)/3.0, 0., 1.));
+          if (uni.extra2.x < 0.5) { base = shadeSRT(srt); }
+          let ringW = 0.04;
+          let rS = 1.0 - smoothstep(0.0, ringW, abs(n.x));
+          let rR = 1.0 - smoothstep(0.0, ringW, abs(n.y));
+          let rT = 1.0 - smoothstep(0.0, ringW, abs(n.z));
+          let light = clamp(0.55 + 0.45*max(dot(n,normalize(vec3<f32>(0.4,0.7,0.5))),0.),0.,1.);
+          var c0 = base * light;
+          c0 = mix(c0, vec3<f32>(0.40,0.88,1.00), rS*0.85);
+          c0 = mix(c0, vec3<f32>(0.88,0.40,1.00), rR*0.85);
+          c0 = mix(c0, vec3<f32>(1.00,0.55,0.18), rT*0.85);
+          color = c0;
+        }
+      }
+    }
+  }
+  return vec4<f32>(color, 1.0);
+}
+`;
+const shaderModule = device.createShaderModule({ code: shaderCode });
+const pipeline = await device.createRenderPipelineAsync({
+  layout: 'auto',
+  vertex: { module: shaderModule, entryPoint: 'vs' },
+  fragment: { module: shaderModule, entryPoint: 'fs', targets: [{ format }] },
+  primitive: { topology: 'triangle-list' },
+});
+
+const uniformData = new Float32Array(20);
+const uniformBuffer = device.createBuffer({
+  size: uniformData.byteLength,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+const sampler = device.createSampler({
+  magFilter: 'linear', minFilter: 'linear',
+  addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge', addressModeW: 'clamp-to-edge',
+});
+const renderBindGroup = device.createBindGroup({
+  layout: pipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: uniformBuffer } },
+    { binding: 1, resource: fieldTex.createView() },
+    { binding: 2, resource: sampler },
+  ],
+});
+
+// ---------- 尺寸 & overlay ----------
+let W=0, H=0, DPR=1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  gpuCanvas.width = Math.round(W*DPR); gpuCanvas.height = Math.round(H*DPR);
+  ov.width = gpuCanvas.width; ov.height = gpuCanvas.height;
+  ovCtx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+
+function projectPoint(x,y,z) {
+  const ct=Math.cos(theta), st=Math.sin(theta);
+  const cp=Math.cos(phi), sp=Math.sin(phi);
+  const px=ct*x+st*sp*y+st*cp*z;
+  const py=cp*y-sp*z;
+  const pz=-st*x+ct*sp*y+ct*cp*z;
+  const depth=dist-pz;
+  if (depth<0.1) return null;
+  const sc=Math.min(W,H)*0.5*zoom;
+  return { x: W*0.5+(px/depth)*focal*sc, y: H*0.5+(py/depth)*focal*sc, depth };
+}
+function unproject(sx, sy, depth) {
+  const ct=Math.cos(theta), st=Math.sin(theta);
+  const cp=Math.cos(phi), sp=Math.sin(phi);
+  const sc=Math.min(W,H)*0.5*zoom;
+  const px=(sx-W*0.5)/(focal*sc)*depth;
+  const py=(sy-H*0.5)/(focal*sc)*depth;
+  const pz=dist-depth;
+  return {
+    x: ct*px+st*sp*py+st*cp*pz,
+    y: cp*py-sp*pz,
+    z: -st*px+ct*sp*py+ct*cp*pz,
+  };
+}
+function lvlColor(lvl) {
+  if (lvl===0) return 'rgba(120,230,255,';
+  if (lvl===1) return 'rgba(210,120,255,';
+  if (lvl===2) return 'rgba(255,170,80,';
+  return 'rgba(200,200,200,';
+}
+let hoverIdx=-1, dragIdx=-1, dragStart=null;
+function drawOverlay() {
+  ovCtx.clearRect(0,0,W,H);
+  if (lineAlpha>0.01) {
+    const V=[];
+    for (const x of [-1,1]) for (const y of [-1,1]) for (const z of [-1,1]) V.push(projectPoint(x,y,z));
+    const edges=[[0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]];
+    ovCtx.lineWidth=1.2; ovCtx.strokeStyle=`rgba(160,200,255,${lineAlpha})`;
+    ovCtx.beginPath();
+    for (const [a,b] of edges) { if (!V[a]||!V[b]) continue;
+      ovCtx.moveTo(V[a].x,V[a].y); ovCtx.lineTo(V[b].x,V[b].y); }
+    ovCtx.stroke();
+    const tetA=[0,3,5,6], tetB=[1,2,4,7];
+    ovCtx.strokeStyle=`rgba(255,120,160,${lineAlpha*0.9})`;
+    ovCtx.beginPath();
+    for (const tet of [tetA,tetB]) for (let i=0;i<4;i++) for (let j=i+1;j<4;j++) {
+      const a=tet[i], b=tet[j]; if (!V[a]||!V[b]) continue;
+      ovCtx.moveTo(V[a].x,V[a].y); ovCtx.lineTo(V[b].x,V[b].y); }
+    ovCtx.stroke();
+  }
+  for (let i=0;i<CTRL_N;i++) {
+    const p=ctrl[i]; const s=projectPoint(p.x,p.y,p.z);
+    if (!s) continue;
+    const base=lvlColor(p.lvl);
+    const isHover=(i===hoverIdx); const isDrag=(i===dragIdx);
+    const rad=isDrag?7:(isHover?6:4);
+    ovCtx.beginPath(); ovCtx.arc(s.x,s.y,rad,0,6.283);
+    ovCtx.fillStyle = base + (isDrag?1.0:isHover?0.95:0.75) + ')';
+    ovCtx.fill();
+    ovCtx.lineWidth=1.2;
+    ovCtx.strokeStyle = isDrag ? 'rgba(255,255,255,1)' : 'rgba(0,0,0,0.55)';
+    ovCtx.stroke();
+  }
+}
+
+// ---------- 交互 ----------
+function pickCtrl(sx, sy) {
+  let best=-1, bestD=16*16;
+  for (let i=0;i<CTRL_N;i++) {
+    const s=projectPoint(ctrl[i].x,ctrl[i].y,ctrl[i].z);
+    if (!s) continue;
+    const dx=s.x-sx, dy=s.y-sy, d2=dx*dx+dy*dy;
+    if (d2<bestD) { bestD=d2; best=i; }
+  }
+  return best;
+}
+let rotating=false, lastX=0, lastY=0;
+gpuCanvas.addEventListener('pointerdown', e => {
+  const idx = pickCtrl(e.clientX, e.clientY);
+  if (idx >= 0) {
+    dragIdx = idx;
+    const s = projectPoint(ctrl[dragIdx].x, ctrl[dragIdx].y, ctrl[dragIdx].z);
+    dragStart = { depth: s.depth };
+    gpuCanvas.setPointerCapture(e.pointerId);
+    gpuCanvas.style.cursor = 'grabbing';
+  } else {
+    rotating = true; lastX = e.clientX; lastY = e.clientY;
+    gpuCanvas.setPointerCapture(e.pointerId);
+    gpuCanvas.style.cursor = 'grabbing';
+  }
+});
+gpuCanvas.addEventListener('pointermove', e => {
+  if (dragIdx >= 0 && dragStart) {
+    const w = unproject(e.clientX, e.clientY, dragStart.depth);
+    ctrl[dragIdx].x = w.x; ctrl[dragIdx].y = w.y; ctrl[dragIdx].z = w.z;
+    writeCtrlBuffer(); dispatchCompute();
+    return;
+  }
+  if (rotating) {
+    const dx=e.clientX-lastX, dy=e.clientY-lastY;
+    lastX=e.clientX; lastY=e.clientY;
+    theta -= dx*0.008; phi -= dy*0.008;
+    phi = Math.max(-1.4, Math.min(1.4, phi));
+    return;
+  }
+  hoverIdx = pickCtrl(e.clientX, e.clientY);
+  gpuCanvas.style.cursor = hoverIdx >= 0 ? 'grab' : 'default';
+});
+gpuCanvas.addEventListener('pointerup', e => {
+  rotating=false; dragIdx=-1; dragStart=null;
+  gpuCanvas.style.cursor='default';
+  try { gpuCanvas.releasePointerCapture(e.pointerId); } catch(_){}
+});
+gpuCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom *= Math.exp(-e.deltaY*0.001);
+  zoom = Math.max(0.35, Math.min(5, zoom));
+}, { passive: false });
+
+// ---------- 渲染 ----------
+function updateUniform() {
+  uniformData[0]=theta; uniformData[1]=phi; uniformData[2]=zoom; uniformData[3]=dist;
+  uniformData[4]=sliceZ; uniformData[5]=focal; uniformData[6]=FIELD_EXT; uniformData[7]=mode;
+  uniformData[8]=density; uniformData[9]=W; uniformData[10]=H; uniformData[11]=isoValue;
+  uniformData[12]=colorMode; uniformData[13]=chanS; uniformData[14]=chanR; uniformData[15]=chanT;
+  uniformData[16]=sphereRadius; uniformData[17]=0; uniformData[18]=0; uniformData[19]=0;
+  device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+}
+let lastT = performance.now();
+let needCompute = false;
+function frame(now) {
+  const dt = Math.min(0.05, (now-lastT)/1000); lastT = now;
+  if (bcSpeed > 0) { phase += bcSpeed*dt; needCompute = true; }
+  if (needCompute) { dispatchCompute(); needCompute = false; }
+  updateUniform();
+  const enc = device.createCommandEncoder();
+  const pass = enc.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      loadOp: 'clear', storeOp: 'store',
+      clearValue: { r:0.02, g:0.02, b:0.03, a:1 },
+    }],
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, renderBindGroup);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([enc.finish()]);
+  drawOverlay();
+  requestAnimationFrame(frame);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+function setMode(m) { mode=m; for (let i=0;i<4;i++) $('m'+i).classList.toggle('active', i===m); }
+$('m0').onclick=()=>setMode(0);
+$('m1').onclick=()=>setMode(1);
+$('m2').onclick=()=>setMode(2);
+$('m3').onclick=()=>setMode(3);
+function setColor(c){ colorMode=c; $('c0').classList.toggle('active',c===0); $('c1').classList.toggle('active',c===1); }
+$('c0').onclick=()=>setColor(0);
+$('c1').onclick=()=>setColor(1);
+$('chS').onclick=()=>{chanS=chanS?0:1; $('chS').classList.toggle('active',!!chanS);};
+$('chR').onclick=()=>{chanR=chanR?0:1; $('chR').classList.toggle('active',!!chanR);};
+$('chT').onclick=()=>{chanT=chanT?0:1; $('chT').classList.toggle('active',!!chanT);};
+$('sD').oninput=e=>{sliceZ=+e.target.value; $('vD').textContent=sliceZ.toFixed(2);};
+$('sDen').oninput=e=>{density=+e.target.value; $('vDen').textContent=density.toFixed(2);};
+$('sIso').oninput=e=>{isoValue=+e.target.value; $('vIso').textContent=isoValue.toFixed(2);};
+$('sRad').oninput=e=>{sphereRadius=+e.target.value; $('vRad').textContent=sphereRadius.toFixed(2);};
+$('sF').oninput=e=>{noiseScale=+e.target.value; $('vF').textContent=noiseScale.toFixed(1); needCompute=true;};
+$('sW').oninput=e=>{ctrlWeight=+e.target.value; $('vW').textContent=ctrlWeight.toFixed(2); needCompute=true;};
+$('sSp').oninput=e=>{bcSpeed=+e.target.value; $('vSp').textContent=bcSpeed.toFixed(2);};
+$('sL').oninput=e=>{lineAlpha=+e.target.value; $('vL').textContent=lineAlpha.toFixed(2);};
+$('btnNew').onclick=()=>{seed=Math.random()*1000; needCompute=true;};
+$('btnReset').onclick=()=>{
+  for (let i=0;i<CTRL_N;i++) { const p=ctrl[i], q=ctrlInit[i];
+    p.x=q.x; p.y=q.y; p.z=q.z; }
+  writeCtrlBuffer(); needCompute=true;
+};
+$('btnExport').onclick=()=>{
+  const data = ctrl.map(p => ({
+    x:+p.x.toFixed(4), y:+p.y.toFixed(4), z:+p.z.toFixed(4),
+    r:+p.r.toFixed(4), S:+p.S.toFixed(3), R:+p.R.toFixed(3), T:+p.T.toFixed(3), lvl:p.lvl
+  }));
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'mkb_ctrl.json'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+};
+$('btnImport').onclick=()=>$('fileImport').click();
+$('fileImport').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!Array.isArray(data)) throw new Error('格式错误：需要数组');
+      for (let i=0; i<Math.min(CTRL_N, data.length); i++) {
+        const p=ctrl[i], q=data[i];
+        if (typeof q.x==='number') p.x=q.x;
+        if (typeof q.y==='number') p.y=q.y;
+        if (typeof q.z==='number') p.z=q.z;
+        if (typeof q.r==='number') p.r=q.r;
+        if (typeof q.S==='number') p.S=q.S;
+        if (typeof q.R==='number') p.R=q.R;
+        if (typeof q.T==='number') p.T=q.T;
+      }
+      writeCtrlBuffer(); needCompute=true;
+    } catch(err) { alert('导入失败: ' + err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+};
+
+// ---------- 启动 ----------
+resize();
+dispatchCompute();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

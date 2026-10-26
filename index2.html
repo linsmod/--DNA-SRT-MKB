@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MKB 场 · 平滑切片 + 骨架</title>
+<style>
+  html,body{margin:0;height:100%;background:#050508;overflow:hidden;
+    font-family:system-ui,sans-serif;}
+  #c{display:block;width:100%;height:100%;cursor:grab;touch-action:none;}
+  #c:active{cursor:grabbing;}
+  #ui{position:fixed;top:12px;left:12px;background:rgba(12,12,22,.86);color:#ccc;
+    padding:12px 14px;border-radius:12px;font-size:12px;line-height:1.7;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);width:210px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);}
+  #ui .title{font-weight:600;color:#eee;font-size:13px;margin-bottom:6px;}
+  #ui .row{display:flex;justify-content:space-between;margin-top:6px;}
+  #ui input[type=range]{width:100%;margin:2px 0;accent-color:#8ab4f8;}
+  #ui button{margin-top:8px;width:100%;padding:6px;background:#23233a;color:#ddd;
+    border:1px solid rgba(255,255,255,.12);border-radius:7px;cursor:pointer;font-size:12px;}
+  #ui button:hover{background:#2f2f4a;}
+  .val{color:#8ab4f8;font-variant-numeric:tabular-nums;}
+  .hint{color:#666;font-size:11px;margin-top:8px;line-height:1.5;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div class="title">MKB 场 · 切片观测</div>
+  <div class="row"><span>切片深度</span><span class="val" id="vD">0.00</span></div>
+  <input type="range" id="sD" min="-1.1" max="1.1" step="0.01" value="0">
+  <div class="row"><span>噪声尺度</span><span class="val" id="vF">1.4</span></div>
+  <input type="range" id="sF" min="0.3" max="4" step="0.1" value="1.4">
+  <div class="row"><span>控制点权重</span><span class="val" id="vW">0.55</span></div>
+  <input type="range" id="sW" min="0" max="1" step="0.05" value="0.55">
+  <div class="row"><span>骨架透明度</span><span class="val" id="vL">0.35</span></div>
+  <input type="range" id="sL" min="0" max="1" step="0.05" value="0.35">
+  <button id="btnNew">随机新种子</button>
+  <div class="hint">拖动旋转 · 滚轮缩放<br>切片随视角一起旋转，观察区域内部</div>
+</div>
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W = 0, H = 0, DPR = 1;
+let img = null, imgData = null, buf32 = null;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth;
+  H = canvas.clientHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // 渲染分辨率：像素多时降采样，保证帧率
+  const rw = Math.max(2, Math.floor(W));
+  const rh = Math.max(2, Math.floor(H));
+  img = ctx.createImageData(rw, rh);
+  imgData = img.data;
+  buf32 = new Uint32Array(imgData.buffer);
+}
+window.addEventListener('resize', resize);
+
+// ---------- 参数 ----------
+let seed = Math.random() * 1000;
+let theta = 0.65, phi = 0.28, zoom = 1.0, dist = 3.2;
+const focal = 2.0;
+let noiseScale = 1.4;
+let ctrlWeight = 0.55;
+let lineAlpha = 0.35;
+let sliceZ = 0.0;
+
+const FIELD_RES = 64;          // 场纹理分辨率
+const FIELD_EXT = 1.25;        // 场覆盖 [-EXT, EXT]
+let FIELD = null;              // Float32Array
+let ctrl = [];
+
+// ---------- 噪声 ----------
+function hash3(x, y, z) {
+  let h = (x * 374761393 + y * 668265263 + z * 2147483647 + seed * 7919) | 0;
+  h = (h ^ (h >> 13)) * 1274126177;
+  h = h ^ (h >> 16);
+  return (h >>> 0) / 4294967295;
+}
+function smooth(t) { return t * t * (3 - 2 * t); }
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = smooth(xf), v = smooth(yf), w = smooth(zf);
+  const c000 = hash3(xi, yi, zi),     c100 = hash3(xi+1, yi, zi);
+  const c010 = hash3(xi, yi+1, zi),   c110 = hash3(xi+1, yi+1, zi);
+  const c001 = hash3(xi, yi, zi+1),   c101 = hash3(xi+1, yi, zi+1);
+  const c011 = hash3(xi, yi+1, zi+1), c111 = hash3(xi+1, yi+1, zi+1);
+  const x00 = c000 + (c100 - c000) * u;
+  const x10 = c010 + (c110 - c010) * u;
+  const x01 = c001 + (c101 - c001) * u;
+  const x11 = c011 + (c111 - c011) * u;
+  const y0 = x00 + (x10 - x00) * v;
+  const y1 = x01 + (x11 - x01) * v;
+  return y0 + (y1 - y0) * w;
+}
+function fbm(x, y, z) {
+  let n = 0, amp = 0.5, f = 1;
+  for (let i = 0; i < 4; i++) { n += amp * noise3(x*f, y*f, z*f); amp *= 0.5; f *= 2; }
+  return n;
+}
+
+// ---------- 27 控制点 ----------
+function makeCtrl() {
+  const pts = [];
+  for (const x of [-1,0,1]) for (const y of [-1,0,1]) for (const z of [-1,0,1]) {
+    const zeros = (x===0?1:0)+(y===0?1:0)+(z===0?1:0);
+    let r, kind;
+    if (zeros===0)      { r = 0.30; kind='v'; }
+    else if (zeros===1) { r = 0.34; kind='e'; }
+    else if (zeros===2) { r = 0.40; kind='f'; }
+    else                { r = 0.48; kind='c'; }
+    pts.push({ x, y, z, w: (Math.random()-0.5)*2, r, kind });
+  }
+  return pts;
+}
+
+// ---------- 连续场 ----------
+function fieldRaw(x, y, z) {
+  const n = fbm(x*noiseScale + seed, y*noiseScale, z*noiseScale);
+  let c = 0;
+  for (let i = 0; i < ctrl.length; i++) {
+    const p = ctrl[i];
+    const dx = x-p.x, dy = y-p.y, dz = z-p.z;
+    const d2 = dx*dx+dy*dy+dz*dz;
+    c += p.w * Math.exp(-d2 / (2*p.r*p.r));
+  }
+  return n*(1-ctrlWeight) + c*ctrlWeight;
+}
+
+// ---------- 预计算 3D 场纹理 ----------
+function buildField() {
+  ctrl = makeCtrl();
+  const N = FIELD_RES;
+  FIELD = new Float32Array(N*N*N);
+  const step = (2*FIELD_EXT) / (N-1);
+  let mn = Infinity, mx = -Infinity;
+  for (let k=0;k<N;k++) for (let j=0;j<N;j++) for (let i=0;i<N;i++) {
+    const x = -FIELD_EXT + i*step;
+    const y = -FIELD_EXT + j*step;
+    const z = -FIELD_EXT + k*step;
+    const v = fieldRaw(x, y, z);
+    const idx = (k*N + j)*N + i;
+    FIELD[idx] = v;
+    if (v<mn) mn=v;
+    if (v>mx) mx=v;
+  }
+  const span = (mx-mn)||1;
+  for (let i=0;i<FIELD.length;i++) FIELD[i] = (FIELD[i]-mn)/span; // 归一化 0..1
+}
+
+// 三线性采样
+function sampleField(x, y, z) {
+  const N = FIELD_RES;
+  const step = (2*FIELD_EXT) / (N-1);
+  let fx = (x + FIELD_EXT) / step;
+  let fy = (y + FIELD_EXT) / step;
+  let fz = (z + FIELD_EXT) / step;
+  if (fx<0||fy<0||fz<0||fx>N-1||fy>N-1||fz>N-1) return -1;
+  const x0 = fx|0, y0 = fy|0, z0 = fz|0;
+  const x1 = Math.min(x0+1,N-1), y1 = Math.min(y0+1,N-1), z1 = Math.min(z0+1,N-1);
+  const tx = fx-x0, ty = fy-y0, tz = fz-z0;
+  const c000 = FIELD[(z0*N+y0)*N+x0], c100 = FIELD[(z0*N+y0)*N+x1];
+  const c010 = FIELD[(z0*N+y1)*N+x0], c110 = FIELD[(z0*N+y1)*N+x1];
+  const c001 = FIELD[(z1*N+y0)*N+x0], c101 = FIELD[(z1*N+y0)*N+x1];
+  const c011 = FIELD[(z1*N+y1)*N+x0], c111 = FIELD[(z1*N+y1)*N+x1];
+  const x00 = c000+(c100-c000)*tx, x10 = c010+(c110-c010)*tx;
+  const x01 = c001+(c101-c001)*tx, x11 = c011+(c111-c011)*tx;
+  const y0v = x00+(x10-x00)*ty, y1v = x01+(x11-x01)*ty;
+  return y0v+(y1v-y0v)*tz;
+}
+
+// ---------- 色带：青蓝 → 紫 → 暖红（类似 inferno 的调子） ----------
+const LUT = new Float32Array(256*3);
+(function buildLUT() {
+  const stops = [
+    [0.00,  8, 12, 30],
+    [0.18, 30, 60,120],
+    [0.38, 70,130,190],
+    [0.55,140, 90,180],
+    [0.72,220, 80,110],
+    [0.88,245,150, 60],
+    [1.00,255,235,200],
+  ];
+  for (let i=0;i<256;i++) {
+    const t = i/255;
+    let a=stops[0], b=stops[stops.length-1];
+    for (let s=0;s<stops.length-1;s++) {
+      if (t>=stops[s][0] && t<=stops[s+1][0]) { a=stops[s]; b=stops[s+1]; break; }
+    }
+    const u = (t-a[0])/((b[0]-a[0])||1);
+    LUT[i*3]   = a[1]+(b[1]-a[1])*u;
+    LUT[i*3+1] = a[2]+(b[2]-a[2])*u;
+    LUT[i*3+2] = a[3]+(b[3]-a[3])*u;
+  }
+})();
+
+// ---------- 投影 ----------
+function project(x, y, z, cx, cy, sc, cosT, sinT, cosP, sinP) {
+  const x1 =  x*cosT + z*sinT;
+  const z1 = -x*sinT + z*cosT;
+  const y1 =  y*cosP - z1*sinP;
+  const z2 =  y*sinP + z1*cosP;
+  const depth = z2 + dist;
+  if (depth < 0.12) return null;
+  const s = focal / depth;
+  return { sx: cx + x1*s*sc, sy: cy + y1*s*sc, z: z2, s };
+}
+
+// ---------- 渲染 ----------
+function render() {
+  if (!FIELD) return;
+  const cx = W/2, cy = H/2;
+  const sc = Math.min(W,H)*0.5*zoom;
+  const cosT = Math.cos(theta), sinT = Math.sin(theta);
+  const cosP = Math.cos(phi),    sinP = Math.sin(phi);
+
+  // 相机基向量（用于切片求交）
+  // 相机看向 -Z，旋转矩阵 R = Ry(theta) * Rx(phi) 的转置
+  // 世界坐标 = R^T * 相机坐标
+  const rw = img.width, rh = img.height;
+  const scaleX = W / rw, scaleY = H / rh;
+
+  // 预计算 LUT 为整数，加速
+  const lut = LUT;
+
+  // 切片平面：世界坐标 z = sliceZ（随视角旋转，即固定在物体坐标系）
+  // 对每个像素：相机射线 -> 世界坐标 -> 与 z=sliceZ 求交
+  // 简化：直接对屏幕像素反投影到切片平面（透视）
+  // 相机坐标 (xc, yc, zc=-focal) 看向 z=0 方向... 这里用正交近似更稳，但保留透视
+  // 使用透视：世界点 P 投影满足 sx = cx + x1*s*sc, s=focal/(z2+dist)
+  // 反解需要射线。这里用简单做法：对每个像素求射线，与平面求交。
+
+  // 相机原点（世界坐标）
+  // 相机在 z = -dist 沿 +Z 看（旋转后），等价：世界原点投影到中心
+  // 射线方向：相机空间 (nx, ny, -focal) 归一化后转到世界
+  // 这里 nx = (px-cx)/sc, ny = (py-cy)/sc
+  // 相机空间 -> 世界：先绕 X 轴 -phi，再绕 Y 轴 -theta
+  const cp = Math.cos(-phi), sp = Math.sin(-phi);
+  const ct = Math.cos(-theta), st = Math.sin(-theta);
+
+  // 相机原点世界坐标：旋转后 (0,0,-dist) 的逆变换
+  // 相机空间点 (0,0,0) 对应世界 dist 处？简化：相机在世界 z 轴 -dist 处看向原点
+  // 世界 -> 相机：R * (P - C)，C=(0,0,-dist) 旋转后... 为简化，直接用正交投影近似切片，
+  // 避免透视反解复杂。正交下：世界点 (x,y,z) 投影到 (x1,y1)，与 z2 无关。
+  // 这里保留透视的视觉效果：用 z=sliceZ 平面上的点，其 z2 随 x1,y1 变化？正交下 z2 只与 z 有关。
+  // 采用正交投影 + 深度着色，视觉上足够。
+
+  // 正交投影：世界 (x,y,z) -> 屏幕 (cx + x1*sc, cy + y1*sc)，x1,y1 由旋转决定
+  // 切片 z = sliceZ，对屏幕每个像素反解 (x,y)：
+  // x1 = (px-cx)/sc, y1 = (py-cy)/sc
+  // x1 = x*cosT + z*sinT
+  // y1 = y*cosP - (-x*sinT + z*cosT)*sinP
+  // 已知 z = sliceZ，解 x, y：
+  // x*cosT = x1 - sliceZ*sinT  => x = (x1 - sliceZ*sinT)/cosT  (cosT≈0时退化，需处理)
+  // 再 y*cosP = y1 + z1*sinP, z1 = -x*sinT + sliceZ*cosT
+  // => y = (y1 + z1*sinP)/cosP
+
+  const z = sliceZ;
+  const invCosT = Math.abs(cosT) > 1e-4 ? 1/cosT : 0;
+  const invCosP = Math.abs(cosP) > 1e-4 ? 1/cosP : 0;
+
+  for (let py = 0; py < rh; py++) {
+    const sy = (py + 0.5) * scaleY;
+    const y1 = (sy - cy) / sc;
+    for (let px = 0; px < rw; px++) {
+      const sx = (px + 0.5) * scaleX;
+      const x1 = (sx - cx) / sc;
+
+      let x, y;
+      if (Math.abs(cosT) > 1e-4) {
+        x = (x1 - z*sinT) * invCosT;
+      } else {
+        // cosT≈0：x1 = z*sinT 几乎固定，切片退化
+        x = 0;
+      }
+      const z1 = -x*sinT + z*cosT;
+      if (Math.abs(cosP) > 1e-4) {
+        y = (y1 + z1*sinP) * invCosP;
+      } else {
+        y = 0;
+      }
+
+      const v = sampleField(x, y, z);
+      const off = (py*rw + px) * 4;
+      if (v < 0) {
+        buf32[py*rw + px] = 0xFF050508;
+        continue;
+      }
+      // 简单光照：用屏幕空间梯度近似
+      const eps = 1.0 / FIELD_RES;
+      const vx = sampleField(x+eps, y, z) - sampleField(x-eps, y, z);
+      const vy = sampleField(x, y+eps, z) - sampleField(x, y-eps, z);
+      const shade = Math.min(1, 0.75 + 0.5*(vx*0.5 + vy*0.5) + v*0.3);
+
+      const ti = Math.max(0, Math.min(255, (v*255)|0));
+      const r = lut[ti*3] * shade;
+      const g = lut[ti*3+1] * shade;
+      const b = lut[ti*3+2] * shade;
+
+      buf32[py*rw + px] = (255<<24) | ((b|0)<<16) | ((g|0)<<8) | (r|0);
+    }
+  }
+
+  // 写入 canvas（缩放到实际尺寸）
+  const tmp = document.createElement('canvas');
+  tmp.width = rw; tmp.height = rh;
+  tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(tmp, 0, 0, W, H);
+
+  // 叠加骨架
+  if (lineAlpha > 0.01) drawSkeleton(cx, cy, sc, cosT, sinT, cosP, sinP);
+
+  // 叠加切片上的控制点投影（小亮点）
+  drawSliceDots(cx, cy, sc, cosT, sinT, cosP, sinP, z);
+}
+
+// ---------- 骨架：立方体 12 边 + 四面体边 ----------
+function drawSkeleton(cx, cy, sc, cosT, sinT, cosP, sinP) {
+  const V = [];
+  for (const x of [-1,1]) for (const y of [-1,1]) for (const z of [-1,1]) {
+    const p = project(x, y, z, cx, cy, sc, cosT, sinT, cosP, sinP);
+    V.push(p);
+  }
+  // 立方体 12 边
+  const edges = [
+    [0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]
+  ];
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = `rgba(160,200,255,${lineAlpha})`;
+  ctx.beginPath();
+  for (const [a,b] of edges) {
+    if (!V[a] || !V[b]) continue;
+    ctx.moveTo(V[a].sx, V[a].sy);
+    ctx.lineTo(V[b].sx, V[b].sy);
+  }
+  ctx.stroke();
+
+  // 四面体边（阴阳两个正四面体）
+  const tetA = [0, 3, 5, 6]; // 奇数个 1 的顶点
+  const tetB = [1, 2, 4, 7];
+  ctx.strokeStyle = `rgba(255,120,160,${lineAlpha*0.9})`;
+  ctx.beginPath();
+  for (const tet of [tetA, tetB]) {
+    for (let i=0;i<4;i++) for (let j=i+1;j<4;j++) {
+      const a = tet[i], b = tet[j];
+      if (!V[a] || !V[b]) continue;
+      ctx.moveTo(V[a].sx, V[a].sy);
+      ctx.lineTo(V[b].sx, V[b].sy);
+    }
+  }
+  ctx.stroke();
+
+  // 顶点
+  for (let i=0;i<V.length;i++) {
+    if (!V[i]) continue;
+    ctx.beginPath();
+    ctx.arc(V[i].sx, V[i].sy, 3, 0, 6.283);
+    ctx.fillStyle = `rgba(255,255,255,${Math.min(1, lineAlpha*2)})`;
+    ctx.fill();
+  }
+}
+
+// ---------- 切片上的控制点投影 ----------
+function drawSliceDots(cx, cy, sc, cosT, sinT, cosP, sinP, z) {
+  for (let i=0;i<ctrl.length;i++) {
+    const p = ctrl[i];
+    if (Math.abs(p.z - z) > 0.18) continue;
+    const v = sampleField(p.x, p.y, z);
+    if (v < 0) continue;
+    const pr = project(p.x, p.y, z, cx, cy, sc, cosT, sinT, cosP, sinP);
+    if (!pr) continue;
+    const ti = Math.max(0, Math.min(255, (v*255)|0));
+    ctx.beginPath();
+    ctx.arc(pr.sx, pr.sy, 2.5, 0, 6.283);
+    ctx.fillStyle = `rgba(${LUT[ti*3]|0},${LUT[ti*3+1]|0},${LUT[ti*3+2]|0},0.9)`;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+}
+
+// ---------- 交互 ----------
+let dragging = false, lastX = 0, lastY = 0;
+canvas.addEventListener('pointerdown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  theta -= dx * 0.008;
+  phi   -= dy * 0.008;
+  phi = Math.max(-1.4, Math.min(1.4, phi));
+});
+canvas.addEventListener('pointerup', e => {
+  dragging = false;
+  try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom *= Math.exp(-e.deltaY * 0.001);
+  zoom = Math.max(0.35, Math.min(5, zoom));
+}, { passive: false });
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('sD').addEventListener('input', e => {
+  sliceZ = +e.target.value; $('vD').textContent = sliceZ.toFixed(2);
+});
+$('sF').addEventListener('input', e => {
+  noiseScale = +e.target.value; $('vF').textContent = noiseScale.toFixed(1);
+  buildField();
+});
+$('sW').addEventListener('input', e => {
+  ctrlWeight = +e.target.value; $('vW').textContent = ctrlWeight.toFixed(2);
+  buildField();
+});
+$('sL').addEventListener('input', e => {
+  lineAlpha = +e.target.value; $('vL').textContent = lineAlpha.toFixed(2);
+});
+$('btnNew').addEventListener('click', () => {
+  seed = Math.random() * 1000; buildField();
+});
+
+// ---------- 主循环 ----------
+let pending = false;
+function loop() {
+  if (!pending) { render(); }
+  pending = false;
+  requestAnimationFrame(loop);
+}
+
+resize();
+buildField();
+loop();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MKB 场 · WebGPU 切片/体积观测</title>
+<style>
+  html,body{margin:0;height:100%;background:#050508;overflow:hidden;
+    font-family:system-ui,sans-serif;}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
+  #overlay{pointer-events:none;}
+  #ui{position:fixed;top:12px;left:12px;background:rgba(12,12,22,.86);color:#ccc;
+    padding:12px 14px;border-radius:12px;font-size:12px;line-height:1.7;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);width:220px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:10;}
+  #ui .title{font-weight:600;color:#eee;font-size:13px;margin-bottom:6px;}
+  #ui .row{display:flex;justify-content:space-between;margin-top:6px;}
+  #ui input[type=range]{width:100%;margin:2px 0;accent-color:#8ab4f8;}
+  #ui button{margin-top:8px;width:100%;padding:6px;background:#23233a;color:#ddd;
+    border:1px solid rgba(255,255,255,.12);border-radius:7px;cursor:pointer;font-size:12px;}
+  #ui button:hover{background:#2f2f4a;}
+  #ui button.active{background:#3a4a7a;border-color:#8ab4f8;}
+  .val{color:#8ab4f8;font-variant-numeric:tabular-nums;}
+  .hint{color:#666;font-size:11px;margin-top:8px;line-height:1.5;}
+  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    color:#f88;font-size:14px;background:#050508;z-index:100;text-align:center;padding:24px;}
+</style>
+</head>
+<body>
+<canvas id="gpu"></canvas>
+<canvas id="overlay"></canvas>
+<div id="ui">
+  <div class="title">MKB 场 · WebGPU</div>
+  <div class="row"><span>模式</span></div>
+  <button id="btnSlice" class="active">单切片</button>
+  <button id="btnVolume">体积 Ray March</button>
+  <div class="row"><span>切片深度</span><span class="val" id="vD">0.00</span></div>
+  <input type="range" id="sD" min="-1.1" max="1.1" step="0.01" value="0">
+  <div class="row"><span>体积密度</span><span class="val" id="vDen">0.10</span></div>
+  <input type="range" id="sDen" min="0.02" max="0.4" step="0.01" value="0.1">
+  <div class="row"><span>噪声尺度</span><span class="val" id="vF">1.4</span></div>
+  <input type="range" id="sF" min="0.3" max="4" step="0.1" value="1.4">
+  <div class="row"><span>控制点权重</span><span class="val" id="vW">0.55</span></div>
+  <input type="range" id="sW" min="0" max="1" step="0.05" value="0.55">
+  <div class="row"><span>骨架透明度</span><span class="val" id="vL">0.35</span></div>
+  <input type="range" id="sL" min="0" max="1" step="0.05" value="0.35">
+  <button id="btnNew">随机新种子</button>
+  <div class="hint">拖动旋转 · 滚轮缩放</div>
+</div>
+<div id="err"></div>
+
+<script type="module">
+(async () => {
+'use strict';
+
+const gpuCanvas = document.getElementById('gpu');
+const ov = document.getElementById('overlay');
+const ovCtx = ov.getContext('2d');
+const errEl = document.getElementById('err');
+
+function fail(msg) {
+  errEl.textContent = msg;
+  errEl.style.display = 'flex';
+  throw new Error(msg);
+}
+
+// ---------- WebGPU 初始化 ----------
+if (!navigator.gpu) fail('当前浏览器不支持 WebGPU，请用 Chrome 113+ / Edge 113+。');
+const adapter = await navigator.gpu.requestAdapter();
+if (!adapter) fail('无法获取 WebGPU adapter。');
+const device = await adapter.requestDevice();
+const format = navigator.gpu.getPreferredCanvasFormat();
+const context = gpuCanvas.getContext('webgpu');
+context.configure({ device, format, alphaMode: 'opaque' });
+
+// ---------- 参数 ----------
+let seed = Math.random() * 1000;
+let theta = 0.65, phi = 0.28, zoom = 1.0, dist = 3.2;
+const focal = 2.0;
+let noiseScale = 1.4;
+let ctrlWeight = 0.55;
+let lineAlpha = 0.35;
+let sliceZ = 0.0;
+let density = 0.10;
+let mode = 0; // 0=slice, 1=volume
+
+const FIELD_RES = 64;
+const FIELD_EXT = 1.25;
+
+// ---------- 噪声 & 控制点 ----------
+function hash3(x, y, z) {
+  let h = (x * 374761393 + y * 668265263 + z * 2147483647 + seed * 7919) | 0;
+  h = (h ^ (h >> 13)) * 1274126177;
+  h = h ^ (h >> 16);
+  return (h >>> 0) / 4294967295;
+}
+function smooth(t) { return t * t * (3 - 2 * t); }
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = smooth(xf), v = smooth(yf), w = smooth(zf);
+  const c000 = hash3(xi, yi, zi),     c100 = hash3(xi+1, yi, zi);
+  const c010 = hash3(xi, yi+1, zi),   c110 = hash3(xi+1, yi+1, zi);
+  const c001 = hash3(xi, yi, zi+1),   c101 = hash3(xi+1, yi, zi+1);
+  const c011 = hash3(xi, yi+1, zi+1), c111 = hash3(xi+1, yi+1, zi+1);
+  const x00 = c000+(c100-c000)*u, x10 = c010+(c110-c010)*u;
+  const x01 = c001+(c101-c001)*u, x11 = c011+(c111-c011)*u;
+  const y0 = x00+(x10-x00)*v, y1 = x01+(x11-x01)*v;
+  return y0+(y1-y0)*w;
+}
+function fbm(x, y, z) {
+  let n = 0, amp = 0.5, f = 1;
+  for (let i = 0; i < 4; i++) { n += amp*noise3(x*f, y*f, z*f); amp *= 0.5; f *= 2; }
+  return n;
+}
+
+function makeCtrl() {
+  const pts = [];
+  for (const x of [-1,0,1]) for (const y of [-1,0,1]) for (const z of [-1,0,1]) {
+    const zeros = (x===0?1:0)+(y===0?1:0)+(z===0?1:0);
+    let r;
+    if (zeros===0) r = 0.30;
+    else if (zeros===1) r = 0.34;
+    else if (zeros===2) r = 0.40;
+    else r = 0.48;
+    pts.push({ x, y, z, w: (Math.random()-0.5)*2, r });
+  }
+  return pts;
+}
+let ctrl = makeCtrl();
+
+function fieldRaw(x, y, z) {
+  const n = fbm(x*noiseScale + seed, y*noiseScale, z*noiseScale);
+  let c = 0;
+  for (let i = 0; i < ctrl.length; i++) {
+    const p = ctrl[i];
+    const dx = x-p.x, dy = y-p.y, dz = z-p.z;
+    const d2 = dx*dx+dy*dy+dz*dz;
+    c += p.w * Math.exp(-d2 / (2*p.r*p.r));
+  }
+  return n*(1-ctrlWeight) + c*ctrlWeight;
+}
+
+// ---------- 3D 场纹理数据（rgba8unorm，R 通道存归一化场） ----------
+let fieldTex = null;
+function buildFieldTexture() {
+  ctrl = makeCtrl();
+  const N = FIELD_RES;
+  const data = new Uint8Array(N*N*N*4);
+  const step = (2*FIELD_EXT) / (N-1);
+  const raw = new Float32Array(N*N*N);
+  let mn = Infinity, mx = -Infinity;
+  let idx = 0;
+  for (let k=0;k<N;k++) for (let j=0;j<N;j++) for (let i=0;i<N;i++) {
+    const x = -FIELD_EXT + i*step;
+    const y = -FIELD_EXT + j*step;
+    const z = -FIELD_EXT + k*step;
+    const v = fieldRaw(x, y, z);
+    raw[idx++] = v;
+    if (v<mn) mn=v;
+    if (v>mx) mx=v;
+  }
+  const span = (mx-mn)||1;
+  for (let i=0;i<raw.length;i++) {
+    const v = Math.max(0, Math.min(255, ((raw[i]-mn)/span * 255) | 0));
+    data[i*4] = v;
+    data[i*4+1] = v; // 备用通道
+    data[i*4+2] = v;
+    data[i*4+3] = 255;
+  }
+  if (fieldTex) fieldTex.destroy();
+  fieldTex = device.createTexture({
+    size: [N, N, N],
+    dimension: '3d',
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  device.queue.writeTexture(
+    { texture: fieldTex },
+    data,
+    { bytesPerRow: N*4, rowsPerImage: N },
+    { width: N, height: N, depthOrArrayLayers: N }
+  );
+  rebuildBindGroup();
+}
+
+// ---------- 着色器 ----------
+const shaderCode = `
+struct Uniforms {
+  camera: vec4<f32>,      // theta, phi, zoom, dist
+  params: vec4<f32>,      // sliceZ, focal, fieldExt, mode
+  extra: vec4<f32>,       // density, resolutionW, resolutionH, 0
+};
+@group(0) @binding(0) var<uniform> uni: Uniforms;
+@group(0) @binding(1) var fieldTex: texture_3d<f32>;
+@group(0) @binding(2) var fieldSampler: sampler;
+
+struct VSOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs(@builtin(vertex_index) idx: u32) -> VSOut {
+  var p = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>( 3.0, -1.0),
+    vec2<f32>(-1.0,  3.0)
+  );
+  var o: VSOut;
+  o.pos = vec4<f32>(p[idx], 0.0, 1.0);
+  o.uv = p[idx] * 0.5 + 0.5;
+  return o;
+}
+
+fn lut(t: f32) -> vec3<f32> {
+  var s = array<vec4<f32>, 7>(
+    vec4<f32>(0.00,  8.0/255.0, 12.0/255.0, 30.0/255.0),
+    vec4<f32>(0.18, 30.0/255.0, 60.0/255.0,120.0/255.0),
+    vec4<f32>(0.38, 70.0/255.0,130.0/255.0,190.0/255.0),
+    vec4<f32>(0.55,140.0/255.0, 90.0/255.0,180.0/255.0),
+    vec4<f32>(0.72,220.0/255.0, 80.0/255.0,110.0/255.0),
+    vec4<f32>(0.88,245.0/255.0,150.0/255.0, 60.0/255.0),
+    vec4<f32>(1.00,255.0/255.0,235.0/255.0,200.0/255.0)
+  );
+  var c = s[0].yzw;
+  for (var i = 0; i < 6; i = i + 1) {
+    if (t >= s[i].x && t <= s[i+1].x) {
+      let u = (t - s[i].x) / max(1e-6, s[i+1].x - s[i].x);
+      c = mix(s[i].yzw, s[i+1].yzw, u);
+    }
+  }
+  return c;
+}
+
+fn sampleField(p: vec3<f32>, ext: f32) -> f32 {
+  let uvw = p / (2.0 * ext) + 0.5;
+  if (any(uvw < vec3<f32>(0.0)) || any(uvw > vec3<f32>(1.0))) { return -1.0; }
+  return textureSampleLevel(fieldTex, fieldSampler, uvw, 0.0).r;
+}
+
+fn intersectAABB(ro: vec3<f32>, rd: vec3<f32>, bmin: vec3<f32>, bmax: vec3<f32>) -> vec2<f32> {
+  let invD = 1.0 / rd;
+  let t0 = (bmin - ro) * invD;
+  let t1 = (bmax - ro) * invD;
+  let tmin = min(t0, t1);
+  let tmax = max(t0, t1);
+  let tNear = max(max(tmin.x, tmin.y), tmin.z);
+  let tFar = min(min(tmax.x, tmax.y), tmax.z);
+  return vec2<f32>(tNear, tFar);
+}
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4<f32> {
+  let res = vec2<f32>(uni.extra.y, uni.extra.z);
+  let theta = uni.camera.x;
+  let phi = uni.camera.y;
+  let zoom = uni.camera.z;
+  let dist = uni.camera.w;
+  let sliceZ = uni.params.x;
+  let focal = uni.params.y;
+  let ext = uni.params.z;
+  let mode = uni.params.w;
+  let density = uni.extra.x;
+
+  let ct = cos(theta); let st = sin(theta);
+  let cp = cos(phi);   let sp = sin(phi);
+  // R = Ry * Rx  (世界 -> 观察)
+  let R = mat3x3<f32>(
+    vec3<f32>(ct, 0.0, -st),
+    vec3<f32>(st*sp, cp, ct*sp),
+    vec3<f32>(st*cp, -sp, ct*cp)
+  );
+  let Rt = transpose(R);
+
+  let cx = res.x * 0.5;
+  let cy = res.y * 0.5;
+  let sc = min(res.x, res.y) * 0.5 * zoom;
+  let px = in.uv.x * res.x;
+  let py = (1.0 - in.uv.y) * res.y;
+  let sx = (px - cx) / sc;
+  let sy = (py - cy) / sc;
+
+  let dirView = normalize(vec3<f32>(sx, sy, -focal));
+  let originView = vec3<f32>(0.0, 0.0, dist);
+  let dirWorld = Rt * dirView;
+  let originWorld = Rt * originView;
+
+  var color = vec3<f32>(0.015, 0.015, 0.025);
+
+  if (mode < 0.5) {
+    // ---- 单切片 ----
+    let t = (sliceZ - originWorld.z) / dirWorld.z;
+    if (t > 0.0) {
+      let p = originWorld + t * dirWorld;
+      let v = sampleField(p, ext);
+      if (v >= 0.0) {
+        let eps = 1.0 / 64.0;
+        let gx = sampleField(p + vec3<f32>(eps,0,0), ext) - sampleField(p - vec3<f32>(eps,0,0), ext);
+        let gy = sampleField(p + vec3<f32>(0,eps,0), ext) - sampleField(p - vec3<f32>(0,eps,0), ext);
+        let shade = clamp(0.72 + (gx + gy) * 2.0 + v * 0.28, 0.0, 1.0);
+        color = lut(v) * shade;
+      }
+    }
+  } else {
+    // ---- 体积 ray march ----
+    let bmin = vec3<f32>(-ext, -ext, -ext);
+    let bmax = vec3<f32>( ext,  ext,  ext);
+    let tt = intersectAABB(originWorld, dirWorld, bmin, bmax);
+    let tNear = max(tt.x, 0.0);
+    let tFar = tt.y;
+    if (tFar > tNear && tFar > 0.0) {
+      let steps = 72;
+      let dt = (tFar - tNear) / f32(steps);
+      var accum = vec3<f32>(0.0);
+      var trans = 1.0;
+      for (var i = 0; i < steps; i = i + 1) {
+        let p = originWorld + dirWorld * (tNear + (f32(i) + 0.5) * dt);
+        let v = sampleField(p, ext);
+        if (v > 0.0) {
+          let c = lut(v);
+          let a = clamp(v * density, 0.0, 0.35);
+          accum += trans * a * c;
+          trans *= (1.0 - a);
+          if (trans < 0.02) { break; }
+        }
+      }
+      color = accum;
+    }
+  }
+
+  return vec4<f32>(color, 1.0);
+}
+`;
+
+const shaderModule = device.createShaderModule({ code: shaderCode });
+
+const pipeline = await device.createRenderPipelineAsync({
+  layout: 'auto',
+  vertex: { module: shaderModule, entryPoint: 'vs' },
+  fragment: {
+    module: shaderModule,
+    entryPoint: 'fs',
+    targets: [{ format }],
+  },
+  primitive: { topology: 'triangle-list' },
+});
+
+// ---------- Uniform ----------
+const uniformData = new Float32Array(12);
+const uniformBuffer = device.createBuffer({
+  size: uniformData.byteLength,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+
+const sampler = device.createSampler({
+  magFilter: 'linear',
+  minFilter: 'linear',
+  addressModeU: 'clamp-to-edge',
+  addressModeV: 'clamp-to-edge',
+  addressModeW: 'clamp-to-edge',
+});
+
+let bindGroup = null;
+function rebuildBindGroup() {
+  if (!fieldTex) return;
+  bindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: uniformBuffer } },
+      { binding: 1, resource: fieldTex.createView() },
+      { binding: 2, resource: sampler },
+    ],
+  });
+}
+
+// ---------- 尺寸 ----------
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  gpuCanvas.width = Math.round(W * DPR);
+  gpuCanvas.height = Math.round(H * DPR);
+  ov.width = gpuCanvas.width;
+  ov.height = gpuCanvas.height;
+  ovCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+// ---------- 骨架 overlay ----------
+function projectPoint(x, y, z) {
+  const ct = Math.cos(theta), st = Math.sin(theta);
+  const cp = Math.cos(phi), sp = Math.sin(phi);
+  const px = ct*x + st*sp*y + st*cp*z;
+  const py = cp*y - sp*z;
+  const pz = -st*x + ct*sp*y + ct*cp*z;
+  const depth = dist - pz;
+  if (depth < 0.1) return null;
+  const sc = Math.min(W, H) * 0.5 * zoom;
+  return {
+    x: W*0.5 + (px/depth)*focal*sc,
+    y: H*0.5 + (py/depth)*focal*sc,
+    depth,
+  };
+}
+function drawSkeleton() {
+  ovCtx.clearRect(0, 0, W, H);
+  if (lineAlpha < 0.01) return;
+  const V = [];
+  for (const x of [-1,1]) for (const y of [-1,1]) for (const z of [-1,1]) {
+    V.push(projectPoint(x, y, z));
+  }
+  const edges = [
+    [0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]
+  ];
+  ovCtx.lineWidth = 1.2;
+  ovCtx.strokeStyle = `rgba(160,200,255,${lineAlpha})`;
+  ovCtx.beginPath();
+  for (const [a,b] of edges) {
+    if (!V[a] || !V[b]) continue;
+    ovCtx.moveTo(V[a].x, V[a].y);
+    ovCtx.lineTo(V[b].x, V[b].y);
+  }
+  ovCtx.stroke();
+
+  const tetA = [0, 3, 5, 6];
+  const tetB = [1, 2, 4, 7];
+  ovCtx.strokeStyle = `rgba(255,120,160,${lineAlpha*0.9})`;
+  ovCtx.beginPath();
+  for (const tet of [tetA, tetB]) {
+    for (let i=0;i<4;i++) for (let j=i+1;j<4;j++) {
+      const a = tet[i], b = tet[j];
+      if (!V[a] || !V[b]) continue;
+      ovCtx.moveTo(V[a].x, V[a].y);
+      ovCtx.lineTo(V[b].x, V[b].y);
+    }
+  }
+  ovCtx.stroke();
+
+  for (let i=0;i<V.length;i++) {
+    if (!V[i]) continue;
+    ovCtx.beginPath();
+    ovCtx.arc(V[i].x, V[i].y, 3, 0, 6.283);
+    ovCtx.fillStyle = `rgba(255,255,255,${Math.min(1, lineAlpha*2)})`;
+    ovCtx.fill();
+  }
+}
+
+// ---------- 渲染循环 ----------
+function updateUniform() {
+  uniformData[0] = theta;
+  uniformData[1] = phi;
+  uniformData[2] = zoom;
+  uniformData[3] = dist;
+  uniformData[4] = sliceZ;
+  uniformData[5] = focal;
+  uniformData[6] = FIELD_EXT;
+  uniformData[7] = mode;
+  uniformData[8] = density;
+  uniformData[9] = W;
+  uniformData[10] = H;
+  uniformData[11] = 0;
+  device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+}
+
+function frame() {
+  if (!bindGroup) return;
+  updateUniform();
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      loadOp: 'clear',
+      storeOp: 'store',
+      clearValue: { r: 0.02, g: 0.02, b: 0.03, a: 1 },
+    }],
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  drawSkeleton();
+  requestAnimationFrame(frame);
+}
+
+// ---------- 交互 ----------
+let dragging = false, lastX = 0, lastY = 0;
+gpuCanvas.addEventListener('pointerdown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  gpuCanvas.setPointerCapture(e.pointerId);
+});
+gpuCanvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  theta -= dx * 0.008;
+  phi   -= dy * 0.008;
+  phi = Math.max(-1.4, Math.min(1.4, phi));
+});
+gpuCanvas.addEventListener('pointerup', e => {
+  dragging = false;
+  try { gpuCanvas.releasePointerCapture(e.pointerId); } catch(_) {}
+});
+gpuCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom *= Math.exp(-e.deltaY * 0.001);
+  zoom = Math.max(0.35, Math.min(5, zoom));
+}, { passive: false });
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+$('btnSlice').addEventListener('click', () => {
+  mode = 0;
+  $('btnSlice').classList.add('active');
+  $('btnVolume').classList.remove('active');
+});
+$('btnVolume').addEventListener('click', () => {
+  mode = 1;
+  $('btnVolume').classList.add('active');
+  $('btnSlice').classList.remove('active');
+});
+$('sD').addEventListener('input', e => {
+  sliceZ = +e.target.value; $('vD').textContent = sliceZ.toFixed(2);
+});
+$('sDen').addEventListener('input', e => {
+  density = +e.target.value; $('vDen').textContent = density.toFixed(2);
+});
+$('sF').addEventListener('input', e => {
+  noiseScale = +e.target.value; $('vF').textContent = noiseScale.toFixed(1);
+  buildFieldTexture();
+});
+$('sW').addEventListener('input', e => {
+  ctrlWeight = +e.target.value; $('vW').textContent = ctrlWeight.toFixed(2);
+  buildFieldTexture();
+});
+$('sL').addEventListener('input', e => {
+  lineAlpha = +e.target.value; $('vL').textContent = lineAlpha.toFixed(2);
+});
+$('btnNew').addEventListener('click', () => {
+  seed = Math.random() * 1000;
+  buildFieldTexture();
+});
+
+// ---------- 启动 ----------
+resize();
+buildFieldTexture();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
