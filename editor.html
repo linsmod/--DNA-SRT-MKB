@@ -200,7 +200,7 @@
   <header id="topbar">
     <div class="brand">星四面体 · 配置编辑器<span class="sub">Merkaba / SRT 三角</span></div>
     <div class="actions">
-      <button id="btnAlign">自动对齐</button>
+      <button id="btnAlign" title="在两个镜像最优解之间切换">镜像</button>
       <button id="btnValidate">校验</button>
       <button id="btnExport">导出 JSON</button>
       <button id="btnImport">导入</button>
@@ -699,11 +699,11 @@ function bestVariant(key, slotIdx){
   }
   return {variant:best, score:bestScore};
 }
-/* 对齐：穷举整组 6^4 种摆法组合 —— 先消颜色冲突，再让大边两端虚实尽量交错 */
-function autoAlign(key){
+/* 穷举整组 6^4 种摆法组合，返回所有最优解（零色冲突优先，其次大边虚实交错） */
+function bestLayouts(key){
   const slots = state.slots[key];
-  const best = slots.map(s=>s.variant);
-  let bestScore = Infinity;
+  const old = slots.map(s=>s.variant);
+  let bestScore = Infinity, sols = [];
   const vs = [0,0,0,0];
   for(vs[0]=0; vs[0]<6; vs[0]++)
   for(vs[1]=0; vs[1]<6; vs[1]++)
@@ -717,9 +717,25 @@ function autoAlign(key){
       else if(st.a && st.b && st.a.style !== st.b.style) mix++;
     });
     const score = conf*100 - mix;
-    if(score < bestScore){ bestScore = score; for(let i=0;i<4;i++) best[i]=vs[i]; }
+    if(score < bestScore){ bestScore = score; sols = [vs.slice()]; }
+    else if(score === bestScore) sols.push(vs.slice());
   }
-  for(let i=0;i<4;i++) slots[i].variant = best[i];
+  for(let i=0;i<4;i++) slots[i].variant = old[i];
+  return sols;
+}
+/* 对齐：取第一个最优解 */
+function autoAlign(key){
+  const sols = bestLayouts(key);
+  if(!sols.length) return;
+  for(let i=0;i<4;i++) state.slots[key][i].variant = sols[0][i];
+}
+/* 镜像：切换到另一个并列的最优解（两解互为镜像构型） */
+function mirrorGroup(key){
+  const sols = bestLayouts(key);
+  if(!sols.length) return;
+  const cur = state.slots[key].map(s=>s.variant).join('');
+  const pick = sols.find(v=>v.join('')!==cur) || sols[0];
+  for(let i=0;i<4;i++) state.slots[key][i].variant = pick[i];
 }
 
 /* ============================================================
@@ -1534,7 +1550,7 @@ bindSlider('offD','lower','axisOffset', v=>Number(v).toFixed(2));
 
 /* 按钮 */
 el('btnAlign').addEventListener('click', ()=>{
-  autoAlign('upper'); autoAlign('lower');
+  mirrorGroup('upper'); mirrorGroup('lower');
   validate(); commit('validate');
 });
 el('btnValidate').addEventListener('click', ()=>{ validate(); commit('validate'); });
