@@ -91,16 +91,18 @@
   .seg button.srt-S.on{background:var(--S-soft);border-color:var(--S);color:#fff}
   .seg button.srt-R.on{background:var(--R-soft);border-color:var(--R);color:#fff}
   .seg button.srt-T.on{background:var(--T-soft);border-color:var(--T);color:#fff}
-  .edgegrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}
-  .erow{border:1px solid var(--line);border-radius:6px;padding:4px 6px;cursor:pointer;
-    background:rgba(255,255,255,.02)}
-  .erow.sel{border-color:var(--accent);background:rgba(138,180,248,.12)}
-  .erow .t{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--txt-dim)}
-  .erow .sw{height:3px;border-radius:2px;margin-top:4px}
-  .erow .dsh{font-size:9px;color:var(--txt-dim);padding:0 6px;border-radius:9px;line-height:1.5;
-    border:1px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer}
-  .erow .dsh:hover{color:#ddd;border-color:rgba(138,180,248,.55)}
-  .erow .dsh.on{color:var(--accent);border-color:rgba(138,180,248,.55);background:rgba(138,180,248,.12)}
+  /* 边列表：每条棱一行，号 / 色 / 虚实 三个并列元素 */
+  .edgegrid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px}
+  .echip{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;
+    padding:3px 6px;cursor:pointer;background:rgba(255,255,255,.02)}
+  .echip:hover{background:rgba(255,255,255,.06)}
+  .echip.sel{border-color:var(--accent);background:rgba(138,180,248,.12)}
+  .echip .el{font-size:10px;color:var(--txt-dim);min-width:24px}
+  .echip .ec{flex:1;height:3px;border-radius:2px;min-width:12px}
+  .echip .dsh{font-size:9px;color:var(--txt-dim);padding:0 6px;border-radius:9px;line-height:1.5;
+    border:1px solid var(--line);background:rgba(255,255,255,.03);cursor:pointer;min-width:26px}
+  .echip .dsh:hover{color:#ddd;border-color:rgba(138,180,248,.55)}
+  .echip .dsh.on{color:var(--accent);border-color:rgba(138,180,248,.55);background:rgba(138,180,248,.12)}
   /* 槽位属性表 */
   .tabs{display:flex;gap:5px;margin-bottom:7px}
   .tabs button{flex:1}
@@ -197,11 +199,11 @@
         <button id="btnAddPal" style="width:100%;margin-top:6px">新增配色组</button>
       </div>
       <div class="sect">
-        <h4>上组 · 1 – 4<button class="flipbtn" id="flipUpper" data-flip="upper">镜像</button></h4>
+        <h4>上组 · 1 – 4<button class="flipbtn" id="flipUpper" data-mode="upper" title="切换组模式（shift 0-5）">R0</button></h4>
         <div class="pieces" id="grpUpper"></div>
       </div>
       <div class="sect">
-        <h4>下组 · 5 – 8<button class="flipbtn" id="flipLower" data-flip="lower">镜像</button></h4>
+        <h4>下组 · 5 – 8<button class="flipbtn" id="flipLower" data-mode="lower" title="切换组模式（shift 0-5）">R0</button></h4>
         <div class="pieces" id="grpLower"></div>
       </div>
       <div class="sect">
@@ -297,12 +299,41 @@ const VARIANTS = [
 const SLOT_NAMES = {upper:['A','B','C','D'], lower:['A','B','C','D']};
 const SLOT_SUB   = {upper:['顶点','角 1','角 2','角 3'], lower:['底点','角 1','角 2','角 3']};
 
-/* 摆法镜像对应：R0↔M0, R1↔M1, R2↔M2（镜面过「角轴 + 第三条棱」） */
-const MIRROR_MAP = [3,4,5,0,1,2];
-/* 镜像姿态下的顶点落位：v2↔v3 对调（v0 尖、v3 固定，故 S 棱原地不动，R/T 左右互换） */
-const MIRROR_VTX = [0,1,3,2];
-function groupFlip(key){ return !!(state.groups && state.groups[key] && state.groups[key].flip); }
-function effVariant(key, v){ return groupFlip(key) ? MIRROR_MAP[v] : v; }
+/* 组模式 = 摆法移位量 shift 0..5（0=R0 1=R1 2=R2 3=M0 4=M1 5=M2）
+   每个 shift 对应一组「底顶点标签」置换 σ：底顶点 p 的颜色整体搬到 σ(p) 所在位置 */
+const MODE_SIGMA = [
+  [1,2,3],   /* shift 0 · 不动 */
+  [2,3,1],   /* shift 1 · 旋转 120° */
+  [3,1,2],   /* shift 2 · 旋转 240° */
+  [1,3,2],   /* shift 3 · 镜像 */
+  [3,2,1],   /* shift 4 · 镜像 + 旋转 120° */
+  [2,1,3]    /* shift 5 · 镜像 + 旋转 240° */
+];
+/* 摆法置换 → 序号，便于反查 */
+const VARIANT_INDEX = {};
+VARIANTS.forEach((v,i)=>{ VARIANT_INDEX[v.perm.join('')] = i; });
+/* 右乘：π∘σ，即底顶点 p 落到 σ(p) 原本所在的位置 */
+function composeShift(perm, sigma){
+  const out=[0,0,0];
+  for(let p=1;p<=3;p++) out[p-1] = perm[sigma[p-1]-1];
+  return out;
+}
+function groupMode(key){
+  const g = state.groups && state.groups[key];
+  return (g && typeof g.mode==='number' && g.mode>=0 && g.mode<6) ? g.mode : 0;
+}
+/* 有效摆法 = 槽位摆法 经组 shift 后的置换所对应的摆法序号 */
+function effVariant(key, v){
+  const s = MODE_SIGMA[groupMode(key)];
+  const perm = composeShift(VARIANTS[v].perm, s);
+  const idx = VARIANT_INDEX[perm.join('')];
+  return (idx===undefined) ? v : idx;
+}
+/* 组模式下调色板里顶点的绘制落位（0=尖，1..3=底） */
+function modeVertexMap(key){
+  const s = MODE_SIGMA[groupMode(key)];
+  return [0, s[0], s[1], s[2]];
+}
 
 /* 正四面体（外接球半径 1），顶点 0 在 +Z */
 const UP_VERTS = [
@@ -348,7 +379,7 @@ function defaultState(){
     pieces, slots,
     paletteId: DEFAULT_PALETTES[0].id,
     palettes: DEFAULT_PALETTES.map(p=>({id:p.id, name:p.name, colors:{S:p.colors.S,R:p.colors.R,T:p.colors.T}})),
-    groups:{ upper:{flip:false}, lower:{flip:false} },
+    groups:{ upper:{mode:0}, lower:{mode:0} },
     frames:{
       upper:{rotationDeg:0, axisOffset:0},
       lower:{rotationDeg:0, axisOffset:0}
@@ -452,10 +483,13 @@ function normalize(s){
     if(pals.length) out.palettes = pals;
   }
   if(s.paletteId && out.palettes.some(p=>p.id===s.paletteId)) out.paletteId = s.paletteId;
-  /* 分组镜像开关 */
+  /* 分组模式（shift 0..5）；兼容旧版 flip=true → 等价 shift 3 */
   if(s.groups && typeof s.groups==='object'){
     ['upper','lower'].forEach(k=>{
-      if(s.groups[k] && s.groups[k].flip) out.groups[k].flip = true;
+      const g = s.groups[k];
+      if(!g) return;
+      if(typeof g.mode==='number' && g.mode>=0 && g.mode<6) out.groups[k].mode = Math.floor(g.mode);
+      else if(g.flip) out.groups[k].mode = 3;
     });
   }
   return out;
@@ -693,8 +727,7 @@ function renderPalette(){
     state.pieces.filter(p=>p.group===key).forEach(p=>{
       const W=112,H=96;
       const PP = fitProjector(PAL_CAM,W,H,CANON);
-      const mir = groupFlip(key);                 /* 该组是否镜像姿态 */
-      const pos = mir ? MIRROR_VTX : [0,1,2,3];   /* 镜像时 v2↔v3 对调 */
+      const pos = modeVertexMap(key);             /* 组模式下的顶点绘制落位 */
       let body='';
       for(let e=0;e<6;e++){
         const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
@@ -718,7 +751,12 @@ function renderPalette(){
     });
     host.innerHTML=html;
     const fb = el(key==='upper' ? 'flipUpper' : 'flipLower');
-    if(fb) fb.classList.toggle('on', groupFlip(key));
+    if(fb){
+      const m = groupMode(key);
+      fb.textContent = VARIANTS[m].id;
+      fb.classList.toggle('on', m!==0);
+      fb.title = `组模式 shift ${m}（${VARIANTS[m].desc}）· 点击切换`;
+    }
   });
 }
 function slotsUsing(pid){
@@ -900,12 +938,11 @@ function renderSel(){
   const rows = EDGE_DEFS.map((e,i)=>{
     const st=p.edges[i];
     const dsh = st.style==='dashed';
-    return `<div class="erow ${s.kind==='edge'&&s.edge===i?'sel':''}" data-kind="edge" data-piece="${p.id}" data-edge="${i}">
-      <div class="t"><span>边 ${EDGE_LABEL[i]}</span>
-        <button class="dsh ${dsh?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${i}"
-          data-style="${dsh?'solid':'dashed'}" title="切换实线 / 虚线">${dsh?'虚线':'实线'}</button>
-      </div>
-      <div class="sw" style="background:${srtColor(st.srt)}"></div>
+    return `<div class="echip ${s.kind==='edge'&&s.edge===i?'sel':''}" data-kind="edge" data-piece="${p.id}" data-edge="${i}">
+      <span class="el">${EDGE_LABEL[i]}</span>
+      <span class="ec" style="background:${srtColor(st.srt)}"></span>
+      <button class="dsh ${dsh?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${i}"
+        data-style="${dsh?'solid':'dashed'}" title="切换实线 / 虚线">${dsh?'虚':'实'}</button>
     </div>`;
   }).join('');
   const cur = s.kind==='edge'? p.edges[s.edge] : null;
@@ -915,12 +952,12 @@ function renderSel(){
       <span class="badge ${faceViolations(p).length?'bad':'ok'}">${faceViolations(p).length? 'SRT△×'+faceViolations(p).length : 'SRT△ 合规'}</span></div>
     ${cur?`<div class="row"><span class="lb">边</span><b>${EDGE_LABEL[s.edge]}</b>
       <div class="seg">
-        ${SRT_ORDER.map(k=>`<button class="srt-${k} ${cur.srt===k?'on':''}" data-act="srt" data-piece="${p.id}" data-edge="${s.edge}" data-srt="${k}">${k} ${SRT[k].cn}</button>`).join('')}
-      </div></div>
-      <div class="row"><span class="lb">线型</span>
-        <button class="${cur.style==='solid'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="solid">实线</button>
-        <button class="${cur.style==='dashed'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="dashed">虚线</button>
-      </div>`:''}
+        ${SRT_ORDER.map(k=>`<button class="srt-${k} ${cur.srt===k?'on':''}" data-act="srt" data-piece="${p.id}" data-edge="${s.edge}" data-srt="${k}">${k}</button>`).join('')}
+      </div>
+      <div class="seg">
+        <button class="${cur.style==='solid'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="solid">实</button>
+        <button class="${cur.style==='dashed'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="dashed">虚</button>
+      </div></div>`:''}
     <div class="edgegrid">${rows}</div>
     <div class="row"><button data-act="std" data-piece="${p.id}">标准三色（SRT△）</button></div>`;
 }
@@ -993,13 +1030,13 @@ function commit(reason){
 
 document.addEventListener('click', ev=>{
   const t = ev.target;
-  /* 分组镜像开关 */
-  const fb = t.closest ? t.closest('[data-flip]') : null;
+  /* 分组模式切换（shift 0-5 循环） */
+  const fb = t.closest ? t.closest('[data-mode]') : null;
   if(fb){
-    const key = fb.dataset.flip;
-    if(!state.groups) state.groups = {upper:{flip:false}, lower:{flip:false}};
-    if(!state.groups[key]) state.groups[key] = {flip:false};
-    state.groups[key].flip = !state.groups[key].flip;
+    const key = fb.dataset.mode;
+    if(!state.groups) state.groups = {upper:{mode:0}, lower:{mode:0}};
+    if(!state.groups[key]) state.groups[key] = {mode:0};
+    state.groups[key].mode = (groupMode(key) + 1) % 6;
     commit();
     return;
   }
