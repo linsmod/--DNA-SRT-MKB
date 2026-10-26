@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>星四面体 · 配置编辑器</title>
+<style>
+  :root{
+    --bg:#050508;
+    --panel:rgba(12,12,22,.92);
+    --panel2:rgba(20,20,34,.9);
+    --line:rgba(255,255,255,.09);
+    --txt:#c9c9d6;
+    --txt-dim:#7b7b90;
+    --accent:#8ab4f8;
+    --S:#66e0ff;
+    --R:#e066ff;
+    --T:#ff8c2e;
+    --ok:#5fd38a;
+    --bad:#ff6b6b;
+    --warn:#ffc857;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI",system-ui,"Microsoft YaHei",sans-serif;overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100%}
+  /* ---------- 顶栏 ---------- */
+  #topbar{display:flex;align-items:center;gap:18px;padding:8px 14px;
+    background:var(--panel);border-bottom:1px solid var(--line);z-index:5;flex-wrap:wrap}
+  .brand{font-size:14px;font-weight:600;color:#eee;white-space:nowrap}
+  .brand .sub{font-size:11px;color:var(--txt-dim);font-weight:400;margin-left:6px}
+  .fgroup{display:flex;align-items:center;gap:10px;padding:4px 10px;border:1px solid var(--line);
+    border-radius:8px;background:rgba(255,255,255,.02)}
+  .flabel{font-size:11px;color:var(--txt-dim);white-space:nowrap}
+  .fgroup label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--txt-dim)}
+  .fgroup input[type=range]{width:96px;accent-color:var(--accent)}
+  .val{color:var(--accent);font-variant-numeric:tabular-nums;min-width:42px;display:inline-block}
+  .actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+  button{font:inherit;font-size:11px;padding:5px 10px;background:#22223a;color:#ddd;
+    border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer}
+  button:hover{background:#2e2e4c}
+  button:active{background:#3a4a7a}
+  button.on{background:#3a4a7a;border-color:var(--accent);color:#fff}
+  #saveState{font-size:10px;color:var(--txt-dim);margin-left:6px;min-width:92px;text-align:right}
+  /* ---------- 主区 ---------- */
+  main{flex:1;display:grid;grid-template-columns:252px 1fr 404px;min-height:0}
+  aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
+  aside.right{border-right:none;border-left:1px solid var(--line)}
+  aside::-webkit-scrollbar{width:8px}
+  aside::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+  .ptitle{font-size:12px;font-weight:600;color:#eee;margin:2px 0 8px;display:flex;
+    align-items:center;justify-content:space-between}
+  .ptitle .hint{font-size:10px;color:var(--txt-dim);font-weight:400}
+  .sect{border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02);
+    padding:8px;margin-bottom:10px}
+  .sect h4{margin:0 0 7px;font-size:11px;color:var(--txt-dim);font-weight:600;letter-spacing:.5px;
+    display:flex;justify-content:space-between;align-items:center}
+  /* 小四面体调色板 */
+  .pieces{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .piece{border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02);
+    padding:4px;cursor:pointer;position:relative}
+  .piece:hover{border-color:rgba(138,180,248,.5)}
+  .piece.sel{border-color:var(--accent);box-shadow:0 0 0 1px rgba(138,180,248,.35) inset}
+  .piece svg{display:block;width:100%;height:auto}
+  .piece .cap{display:flex;justify-content:space-between;align-items:center;font-size:10px;
+    color:var(--txt-dim);padding:1px 2px 0}
+  .piece .cap b{color:#ddd;font-weight:600;font-size:11px}
+  .tag{font-size:9px;padding:1px 5px;border-radius:8px;border:1px solid var(--line)}
+  .tag.ok{color:var(--ok);border-color:rgba(95,211,138,.4)}
+  .tag.bad{color:var(--bad);border-color:rgba(255,107,107,.45)}
+  .tag.use{color:var(--accent);border-color:rgba(138,180,248,.45)}
+  /* 舞台 */
+  #stage{position:relative;background:
+    radial-gradient(1200px 700px at 50% 45%, #0d1020 0%, #050508 70%)}
+  #view{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}
+  #view.drag{cursor:grabbing}
+  #hud{position:absolute;left:12px;bottom:10px;font-size:10px;color:var(--txt-dim);
+    background:rgba(8,8,16,.7);padding:5px 9px;border-radius:6px;border:1px solid var(--line);
+    pointer-events:none;line-height:1.6}
+  #viewctl{position:absolute;right:12px;top:10px;display:flex;gap:5px}
+  #legend{position:absolute;left:12px;top:10px;font-size:10px;color:var(--txt-dim);
+    background:rgba(8,8,16,.7);padding:6px 9px;border-radius:6px;border:1px solid var(--line);
+    line-height:1.7;pointer-events:none}
+  #legend i{display:inline-block;width:16px;height:0;border-top:2px solid;margin-right:5px;
+    vertical-align:middle}
+  /* 属性区 */
+  .selbox .row{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap}
+  .selbox .lb{font-size:10px;color:var(--txt-dim);min-width:52px}
+  .seg{display:flex;gap:3px}
+  .seg button{padding:3px 8px;font-size:11px}
+  .seg button.srt-S.on{background:var(--S-soft);border-color:var(--S);color:#fff}
+  .seg button.srt-R.on{background:var(--R-soft);border-color:var(--R);color:#fff}
+  .seg button.srt-T.on{background:var(--T-soft);border-color:var(--T);color:#fff}
+  .edgegrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}
+  .erow{border:1px solid var(--line);border-radius:6px;padding:4px 6px;cursor:pointer;
+    background:rgba(255,255,255,.02)}
+  .erow.sel{border-color:var(--accent);background:rgba(138,180,248,.12)}
+  .erow .t{display:flex;justify-content:space-between;font-size:10px;color:var(--txt-dim)}
+  .erow .sw{height:3px;border-radius:2px;margin-top:4px}
+  .erow .dsh{font-size:9px;color:var(--txt-dim)}
+  /* 槽位属性表 */
+  .tabs{display:flex;gap:5px;margin-bottom:7px}
+  .tabs button{flex:1}
+  table.grid{width:100%;border-collapse:collapse}
+  table.grid td{border-top:1px solid var(--line);padding:5px 3px;vertical-align:middle}
+  table.grid tr:hover td{background:rgba(255,255,255,.025)}
+  td.c-slot{width:48px}
+  .slotname{display:block;font-size:11px;color:#eee;font-weight:600}
+  .slotsub{display:block;font-size:9px;color:var(--txt-dim)}
+  td.c-piece{width:74px}
+  select.psel{width:100%;background:#181828;color:#ddd;border:1px solid var(--line);
+    border-radius:5px;font-size:11px;padding:2px}
+  .puse{display:block;font-size:9px;color:var(--txt-dim);margin-top:2px}
+  button.mini{font-size:9px;padding:1px 4px;margin-top:3px;width:100%}
+  td.c-var{width:150px}
+  .vgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
+  .var{position:relative;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.02);
+    cursor:pointer;padding:1px}
+  .var:hover{border-color:rgba(138,180,248,.55)}
+  .var.on{border-color:var(--accent);background:rgba(138,180,248,.16)}
+  .var.bad{opacity:.45;border-style:dashed}
+  .var svg{display:block;width:100%;height:auto}
+  .var em{position:absolute;left:2px;top:1px;font-size:8px;font-style:normal;color:var(--txt-dim)}
+  .var .dot{position:absolute;right:2px;top:2px;width:5px;height:5px;border-radius:50%}
+  td.c-state{width:46px;text-align:center;font-size:9px;color:var(--txt-dim)}
+  .badge{display:inline-block;font-size:9px;padding:1px 5px;border-radius:8px;border:1px solid var(--line);
+    color:var(--txt-dim);margin:1px}
+  .badge.ok{color:var(--ok);border-color:rgba(95,211,138,.4)}
+  .badge.bad{color:var(--bad);border-color:rgba(255,107,107,.45)}
+  .badge.warn{color:var(--warn);border-color:rgba(255,200,87,.4)}
+  /* 报告 */
+  .rep{display:flex;flex-direction:column;gap:4px;max-height:210px;overflow-y:auto}
+  .ritem{border-left:2px solid var(--line);padding:3px 7px;font-size:10px;line-height:1.5;
+    cursor:pointer;border-radius:0 5px 5px 0;background:rgba(255,255,255,.02)}
+  .ritem:hover{background:rgba(255,255,255,.06)}
+  .ritem.bad{border-left-color:var(--bad)}
+  .ritem.warn{border-left-color:var(--warn)}
+  .ritem.ok{border-left-color:var(--ok)}
+  details.help{font-size:10px;color:var(--txt-dim);line-height:1.65}
+  details.help summary{cursor:pointer;color:var(--txt);font-size:11px;outline:none}
+  details.help b{color:#ccc}
+  .kv{font-size:10px;color:var(--txt-dim);line-height:1.7}
+  .kv b{color:#ddd}
+  /* SRT 配色组 */
+  .palrow{border:1px solid var(--line);border-radius:8px;padding:5px 6px;margin-bottom:5px;
+    background:rgba(255,255,255,.02);cursor:pointer}
+  .palrow:hover{border-color:rgba(138,180,248,.45)}
+  .palrow.on{border-color:var(--accent);background:rgba(138,180,248,.12)}
+  .palname input{width:100%;background:transparent;border:none;color:#eee;font:inherit;font-size:11px;
+    outline:none;border-bottom:1px dashed transparent;padding:1px 0}
+  .palname input:hover{border-bottom-color:rgba(255,255,255,.18)}
+  .palname input:focus{border-bottom-color:var(--accent)}
+  .palsw{display:flex;gap:6px;margin-top:5px}
+  .palsw label{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txt-dim);cursor:pointer}
+  .palsw input[type=color]{width:20px;height:14px;padding:0;border:1px solid var(--line);
+    border-radius:3px;background:none;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand">星四面体 · 配置编辑器<span class="sub">Merkaba / SRT 三角</span></div>
+    <div class="fgroup">
+      <span class="flabel">上四面体</span>
+      <label>旋转<input type="range" id="rotU" min="-180" max="180" step="1" value="0"><span class="val" id="rotUv">0°</span></label>
+      <label>轴移<input type="range" id="offU" min="-0.8" max="0.8" step="0.01" value="0"><span class="val" id="offUv">0.00</span></label>
+    </div>
+    <div class="fgroup">
+      <span class="flabel">下四面体</span>
+      <label>旋转<input type="range" id="rotD" min="-180" max="180" step="1" value="0"><span class="val" id="rotDv">0°</span></label>
+      <label>轴移<input type="range" id="offD" min="-0.8" max="0.8" step="0.01" value="0"><span class="val" id="offDv">0.00</span></label>
+    </div>
+    <div class="actions">
+      <button id="btnAlign">自动对齐</button>
+      <button id="btnValidate">校验</button>
+      <button id="btnExport">导出 JSON</button>
+      <button id="btnImport">导入</button>
+      <button id="btnReset">重置</button>
+      <input type="file" id="fileImport" accept=".json,application/json" style="display:none">
+      <span id="saveState">—</span>
+    </div>
+  </header>
+  <main>
+    <aside id="left">
+      <div class="ptitle">小四面体<span class="hint">两组 · 各四个</span></div>
+      <div class="sect">
+        <h4>SRT 配色组<span class="hint" id="palCur"></span></h4>
+        <div id="palBox"></div>
+        <button id="btnAddPal" style="width:100%;margin-top:6px">新增配色组</button>
+      </div>
+      <div class="sect">
+        <h4>上组 · 1 – 4</h4>
+        <div class="pieces" id="grpUpper"></div>
+      </div>
+      <div class="sect">
+        <h4>下组 · 5 – 8</h4>
+        <div class="pieces" id="grpLower"></div>
+      </div>
+      <div class="sect">
+        <details class="help" open>
+          <summary>模型说明</summary>
+          <p style="margin:6px 0 0">
+            星四面体 = 上下两个大四面体（轴对齐、可绕竖轴旋转、可沿轴上下滑）。<br>
+            每个大四面体四角各有一个 <b>3D 插槽</b>，像积木一样放入一个小四面体（1–4 归上组，5–8 归下组）。<br>
+            小四面体 6 条边各带一个 <b>SRT</b>（S 悦性 / R 变性 / T 惰性）与 <b>实线 / 虚线</b>。<br>
+            每个插槽有 <b>6 种摆法</b>（绕轴 120°×3 旋转 ×2 镜像）；与大四面体另一端的同一条边颜色冲突者标为无效（虚线框）。<br>
+            校验：① 每小四面体每个面三边恰为 S/R/T 各一次；② 每条大边两端同色同线型。<br>
+            <b>SRT 配色组</b>可增删改，当前所用组与全部组定义都会写入导出的 JSON。
+          </p>
+        </details>
+      </div>
+    </aside>
+
+    <section id="stage">
+      <svg id="view"></svg>
+      <div id="legend">
+        <div><i style="border-color:var(--S)"></i>S 悦性　<i style="border-color:var(--R)"></i>R 变性　<i style="border-color:var(--T)"></i>T 惰性</div>
+        <div>实线 = 实　虚线 = 虚</div>
+      </div>
+      <div id="viewctl">
+        <button data-view="iso">斜视</button>
+        <button data-view="front">正视</button>
+        <button data-view="top">俯视</button>
+        <button data-view="reset">复位</button>
+      </div>
+      <div id="hud">拖拽 = 旋转视角 · 滚轮 = 缩放<br>点击边 = 改 SRT / 虚实 · 点击角点 = 选插槽</div>
+    </section>
+
+    <aside class="right" id="right">
+      <div class="sect selbox">
+        <h4>选中对象</h4>
+        <div id="selBox"></div>
+      </div>
+      <div class="sect">
+        <h4>属性 Grid · 四个槽位</h4>
+        <div class="tabs">
+          <button data-tab="upper" class="on">上四面体</button>
+          <button data-tab="lower">下四面体</button>
+        </div>
+        <div id="gridBox"></div>
+      </div>
+      <div class="sect">
+        <h4>校验报告<span id="repSum" class="hint">未校验</span></h4>
+        <div class="rep" id="repBox"><div class="kv">点顶部「校验」检查 SRT△ 规则与大边一致性。</div></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   0. 常量与模型
+   ============================================================ */
+const SCHEMA = 'mksr.star-tetrahedron.editor/1';
+const LS_KEY  = 'mksr.starTet.editor.v1';
+
+const SRT = {
+  S:{cn:'悦性', color:'#66e0ff'},
+  R:{cn:'变性', color:'#e066ff'},
+  T:{cn:'惰性', color:'#ff8c2e'}
+};
+const SRT_ORDER = ['S','R','T'];
+
+/* SRT 配色组：每组定义 S/R/T 三色，可增删改，随配置一起入 JSON */
+const DEFAULT_PALETTES = [
+  {id:'bw',   name:'白红灰', colors:{S:'#f4f6f8', R:'#e04b4b', T:'#9aa2ac'}},
+  {id:'mkb',  name:'青紫橙', colors:{S:'#66e0ff', R:'#e066ff', T:'#ff8c2e'}},
+  {id:'ink',  name:'丹青黛', colors:{S:'#e9c46a', R:'#d1495b', T:'#6c8598'}},
+  {id:'neon', name:'霓虹',   colors:{S:'#4ff5ff', R:'#ff56c8', T:'#b6ff3a'}}
+];
+
+/* 小四面体 4 顶点 0(尖) 1,2,3(底)，6 条边 */
+const EDGE_DEFS = [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];
+const EDGE_LABEL = ['0-1','0-2','0-3','1-2','1-3','2-3'];
+const FACES = [[0,1,2],[0,1,3],[0,2,3],[1,2,3]];
+const NEIGHBORS = [[1,2,3],[0,2,3],[0,1,3],[0,1,2]];   /* 每槽位相邻的 3 个大四面体顶点 */
+const BIG_EDGES = [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];
+
+/* 6 种摆法：perm[p-1] = 小四面体底顶点 p 落在插槽第几个邻位 */
+const VARIANTS = [
+  {id:'R0', perm:[0,1,2], desc:'旋转 0°'},
+  {id:'R1', perm:[1,2,0], desc:'旋转 120°'},
+  {id:'R2', perm:[2,0,1], desc:'旋转 240°'},
+  {id:'M0', perm:[0,2,1], desc:'镜像 0°'},
+  {id:'M1', perm:[1,0,2], desc:'镜像 120°'},
+  {id:'M2', perm:[2,1,0], desc:'镜像 240°'}
+];
+const SLOT_NAMES = {upper:['A','B','C','D'], lower:['A','B','C','D']};
+const SLOT_SUB   = {upper:['顶点','角 1','角 2','角 3'], lower:['底点','角 1','角 2','角 3']};
+
+/* 正四面体（外接球半径 1），顶点 0 在 +Z */
+const UP_VERTS = [
+  [0, 0, 1],
+  [0, 0.9428090416, -0.3333333333],
+  [0.8164965809, -0.4714045208, -0.3333333333],
+  [-0.8164965809, -0.4714045208, -0.3333333333]
+];
+const DOWN_VERTS = UP_VERTS.map(v => [v[0], v[1], -v[2]]);
+const CANON = UP_VERTS;                 /* 小四面体调色板用的标准姿态 */
+const K = 0.42;                         /* 小四面体占角比例 */
+const BASE_SCALE = 205;                 /* 主视图投影尺度 */
+
+/* 标准三色（K4 一因子分解：每面恰含 S/R/T 各一次） */
+const STD_EDGES = [
+  {srt:'S',style:'solid'}, {srt:'R',style:'solid'}, {srt:'T',style:'solid'},
+  {srt:'T',style:'solid'}, {srt:'R',style:'solid'}, {srt:'S',style:'solid'}
+];
+
+/* ============================================================
+   1. 状态
+   ============================================================ */
+let state = defaultState();
+const cam = {az:-0.62, el:0.42, zoom:1, panX:0, panY:0};
+const ui  = {tab:'upper', sel:null};     /* sel: {kind:'edge'|'piece'|'slot', piece, edge, frame, slot} */
+let lastReport = null;
+
+function defaultState(){
+  const pieces = [];
+  for(let i=1;i<=8;i++){
+    pieces.push({id:i, group:i<=4?'upper':'lower', edges:STD_EDGES.map(e=>({srt:e.srt,style:e.style}))});
+  }
+  const slots = {upper:[], lower:[]};
+  /* 默认摆法取一组自洽解：8 件均满足 SRT△，且每个大边两端同色 */
+  const DEF_VARIANTS = [0,3,2,5];   /* R0, M0, R2, M2 */
+  for(let i=0;i<4;i++){
+    slots.upper.push({piece:1+i, variant:DEF_VARIANTS[i]});
+    slots.lower.push({piece:5+i, variant:DEF_VARIANTS[i]});
+  }
+  return {
+    schema:SCHEMA,
+    savedAt:null,
+    pieces, slots,
+    paletteId: DEFAULT_PALETTES[0].id,
+    palettes: DEFAULT_PALETTES.map(p=>({id:p.id, name:p.name, colors:{S:p.colors.S,R:p.colors.R,T:p.colors.T}})),
+    frames:{
+      upper:{rotationDeg:0, axisOffset:0},
+      lower:{rotationDeg:0, axisOffset:0}
+    }
+  };
+}
+function activePalette(){
+  return state.palettes.find(p=>p.id===state.paletteId) || state.palettes[0] || DEFAULT_PALETTES[0];
+}
+function srtColor(code){
+  const p = activePalette();
+  return (p && p.colors && p.colors[code]) || SRT[code].color;
+}
+function hexAlpha(hex,a){
+  let h=String(hex||'').replace('#','');
+  if(h.length===3) h=h.split('').map(c=>c+c).join('');
+  const n=parseInt(h,16);
+  if(isNaN(n)) return `rgba(255,255,255,${a})`;
+  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+/* 把当前配色组写进 CSS 变量，全局控件/图例随之变色 */
+function applyPaletteVars(){
+  const root=document.documentElement;
+  SRT_ORDER.forEach(k=>{
+    const c=srtColor(k);
+    root.style.setProperty('--'+k, c);
+    root.style.setProperty('--'+k+'-soft', hexAlpha(c,0.22));
+  });
+}
+function pieceById(id){ return state.pieces.find(p=>p.id===Number(id)) || null; }
+function edgeIdxOf(a,b){ return EDGE_DEFS.findIndex(e=>(e[0]===a&&e[1]===b)||(e[0]===b&&e[1]===a)); }
+function saveState(){
+  state.savedAt = new Date().toISOString();
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    const d=new Date();
+    const p=n=>String(n).padStart(2,'0');
+    el('saveState').textContent = '已保存 '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  }catch(e){
+    el('saveState').textContent = '保存失败';
+  }
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return false;
+    const s = JSON.parse(raw);
+    state = normalize(s);
+    return true;
+  }catch(e){ return false; }
+}
+/* 容错：补全缺省字段，任何非法值回落到默认 */
+function normalize(s){
+  const d = defaultState();
+  if(!s || typeof s!=='object') return d;
+  const out = d;
+  if(Array.isArray(s.pieces)){
+    s.pieces.forEach(p=>{
+      const t = out.pieces.find(x=>x.id===Number(p.id));
+      if(!t) return;
+      if(Array.isArray(p.edges)){
+        p.edges.forEach((e,i)=>{
+          if(i<6 && e){
+            if(SRT[e.srt]) t.edges[i].srt = e.srt;
+            if(e.style==='dashed'||e.style==='solid') t.edges[i].style = e.style;
+          }
+        });
+      }
+    });
+  }
+  ['upper','lower'].forEach(k=>{
+    if(s.slots && Array.isArray(s.slots[k])){
+      s.slots[k].forEach((sl,i)=>{
+        if(i>3 || !sl) return;
+        const grp = k==='upper'?[1,2,3,4]:[5,6,7,8];
+        const pid = Number(sl.piece);
+        if(grp.includes(pid)) out.slots[k][i].piece = pid;
+        const v = Number(sl.variant);
+        if(v>=0 && v<6) out.slots[k][i].variant = v;
+      });
+    }
+    if(s.frames && s.frames[k]){
+      const r = Number(s.frames[k].rotationDeg);
+      if(isFinite(r)) out.frames[k].rotationDeg = Math.max(-180, Math.min(180, r));
+      const o = Number(s.frames[k].axisOffset);
+      if(isFinite(o)) out.frames[k].axisOffset = Math.max(-0.8, Math.min(0.8, o));
+    }
+  });
+  /* 配色组 */
+  if(Array.isArray(s.palettes)){
+    const pals=[];
+    s.palettes.forEach((p,i)=>{
+      if(!p || !p.colors) return;
+      const cols={};
+      SRT_ORDER.forEach(k=>{
+        const v=String(p.colors[k]||'');
+        cols[k] = /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : DEFAULT_PALETTES[i%DEFAULT_PALETTES.length].colors[k];
+      });
+      pals.push({id:String(p.id||('p'+i)), name:String(p.name||('配色组 '+(i+1))).slice(0,24), colors:cols});
+    });
+    if(pals.length) out.palettes = pals;
+  }
+  if(s.paletteId && out.palettes.some(p=>p.id===s.paletteId)) out.paletteId = s.paletteId;
+  return out;
+}
+
+/* ============================================================
+   2. 几何
+   ============================================================ */
+function frameData(key){
+  const base = key==='upper'?UP_VERTS:DOWN_VERTS;
+  const f = state.frames[key];
+  const th = f.rotationDeg*Math.PI/180, c=Math.cos(th), s=Math.sin(th), dz=f.axisOffset;
+  return base.map(v=>[v[0]*c-v[1]*s, v[0]*s+v[1]*c, v[2]+dz]);
+}
+function socketPoints(key, slotIdx){
+  const V = frameData(key);
+  const apex = V[slotIdx];
+  const nb = NEIGHBORS[slotIdx];
+  const basePts = nb.map(j=>[
+    apex[0]+K*(V[j][0]-apex[0]),
+    apex[1]+K*(V[j][1]-apex[1]),
+    apex[2]+K*(V[j][2]-apex[2])
+  ]);
+  return {apex, basePts, V, nb};
+}
+/* 小四面体在该插槽某摆法下的 4 个世界坐标点 */
+function piecePoints(key, slotIdx, variantIdx){
+  const sock = socketPoints(key, slotIdx);
+  const perm = VARIANTS[variantIdx].perm;
+  const pts = [sock.apex, null, null, null];
+  for(let p=1;p<=3;p++) pts[p] = sock.basePts[perm[p-1]];
+  return pts;
+}
+/* 从某插槽看：通向大四面体顶点 t 的那条“尖边”属于小四面体第几条边（0-2 为尖边） */
+function apexEdgeIndex(slotIdx, variantIdx, t){
+  const perm = VARIANTS[variantIdx].perm;
+  const j = NEIGHBORS[slotIdx].indexOf(t);
+  if(j<0) return -1;
+  const p = perm.indexOf(j);       /* 0..2 */
+  return p;                         /* 尖边 0,1,2 */
+}
+function edgeColorFromSlot(key, slotIdx, towardVertex, variantOverride){
+  const slot = state.slots[key][slotIdx];
+  const v = (variantOverride!==undefined && variantOverride!==null) ? variantOverride : slot.variant;
+  const piece = pieceById(slot.piece);
+  if(!piece) return null;
+  const ei = apexEdgeIndex(slotIdx, v, towardVertex);
+  if(ei<0) return null;
+  return piece.edges[ei];
+}
+/* 大边两端一致性（override: 试摆 {slotIdx, variant}） */
+function bigEdgeStatus(key, a, b, override){
+  const o = override || {};      /* {slotIdx, variant} 试摆 */
+  const sa = o.slotIdx!==undefined ? o.slotIdx : a;
+  const va = o.slotIdx!==undefined ? o.variant : state.slots[key][a].variant;
+  const ea = edgeColorFromSlot(key, sa, b, va);
+  const eb = edgeColorFromSlot(key, b, a);
+  if(!ea || !eb) return {conflict:false, missing:true, color:null, styleMismatch:false};
+  const conflict = ea.srt !== eb.srt;
+  const styleMismatch = ea.style !== eb.style;
+  return {conflict, styleMismatch, color: ea.srt, style: ea.style, a:ea, b:eb};
+}
+/* 某插槽用某摆法时，与其它槽位的冲突数 */
+function variantConflicts(key, slotIdx, variantIdx){
+  let c=0, s=0;
+  NEIGHBORS[slotIdx].forEach(t=>{
+    const st = bigEdgeStatus(key, slotIdx, t, {slotIdx, variant:variantIdx});
+    if(st.conflict) c++;
+    else if(st.styleMismatch) s++;
+  });
+  return {color:c, style:s};
+}
+/* 贪心对齐：为某槽位挑一个与邻槽最不冲突的摆法 */
+function bestVariant(key, slotIdx){
+  let best=state.slots[key][slotIdx].variant, bestScore=Infinity;
+  for(let v=0;v<6;v++){
+    const c=variantConflicts(key, slotIdx, v);
+    const score=c.color*10+c.style;
+    if(score<bestScore){ bestScore=score; best=v; }
+  }
+  return {variant:best, score:bestScore};
+}
+function autoAlign(key){
+  for(let iter=0; iter<8; iter++){
+    let changed=false;
+    for(let i=0;i<4;i++){
+      const b=bestVariant(key,i);
+      if(b.variant!==state.slots[key][i].variant){ state.slots[key][i].variant=b.variant; changed=true; }
+    }
+    if(!changed) break;
+  }
+}
+
+/* ============================================================
+   3. 投影
+   ============================================================ */
+function camBasis(c){
+  const az=c.az, el=c.el;
+  const C=[Math.sin(az)*Math.cos(el), -Math.cos(az)*Math.cos(el), Math.sin(el)];
+  const f=[-C[0],-C[1],-C[2]];
+  let r=[f[1],-f[0],0];
+  const rl=Math.hypot(r[0],r[1])||1; r=[r[0]/rl,r[1]/rl,0];
+  const u=[r[1]*f[2]-r[2]*f[1], r[2]*f[0]-r[0]*f[2], r[0]*f[1]-r[1]*f[0]];
+  return {r,u,f};
+}
+function projector(c,W,H){
+  const {r,u,f}=camBasis(c);
+  const s=BASE_SCALE*(c.zoom||1);
+  const ox=W/2+(c.panX||0), oy=H/2+(c.panY||0);
+  return p=>{
+    const x=p[0]*r[0]+p[1]*r[1]+p[2]*r[2];
+    const y=p[0]*u[0]+p[1]*u[1]+p[2]*u[2];
+    const d=p[0]*f[0]+p[1]*f[1]+p[2]*f[2];
+    return {x:ox+x*s, y:oy-y*s, d};
+  };
+}
+function fitProjector(camObj,W,H,pts){
+  const pr=projector(camObj,W,H);
+  const P=pts.map(pr);
+  let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+  P.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y);});
+  const w=Math.max(x1-x0,1e-6), h=Math.max(y1-y0,1e-6);
+  const k=Math.min((W-8)/w,(H-8)/h);
+  const cx=(x0+x1)/2, cy=(y0+y1)/2;
+  return P.map(p=>({x:W/2+(p.x-cx)*k, y:H/2+(p.y-cy)*k, d:p.d}));
+}
+
+/* ============================================================
+   4. 主视图渲染
+   ============================================================ */
+function renderScene(){
+  const svg = el('view');
+  const W = svg.clientWidth || 700, H = svg.clientHeight || 600;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const pr = projector(cam, W, H);
+  const items = [];      /* 可排序的线段 */
+  let back = '';         /* 背景层 */
+  let front = '';        /* 顶层标记（插槽角点） */
+
+  /* 竖轴 */
+  const A = pr([0,0,-1.25]), B = pr([0,0,1.25]);
+  back += `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="rgba(255,255,255,.10)" stroke-width="1" stroke-dasharray="2 5"/>`;
+
+  ['upper','lower'].forEach(key=>{
+    const V = frameData(key);
+    const P = V.map(v=>pr(v));
+
+    /* 面（淡填充）：上冷下暖，便于区分两组 */
+    FACES.forEach(f=>{
+      const pts=[P[f[0]],P[f[1]],P[f[2]]];
+      const fill = key==='upper' ? 'rgba(120,165,255,0.055)' : 'rgba(255,155,90,0.045)';
+      const st   = key==='upper' ? 'rgba(150,185,255,.12)'  : 'rgba(255,180,120,.10)';
+      back += `<polygon points="${pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}"
+        fill="${fill}" stroke="${st}" stroke-width="1"/>`;
+    });
+
+    /* 大边中段（两端由小四面体的尖边构成） */
+    BIG_EDGES.forEach(([a,b])=>{
+      const st = bigEdgeStatus(key,a,b);
+      const A0=V[a], B0=V[b];
+      const m1=[A0[0]+(B0[0]-A0[0])*K, A0[1]+(B0[1]-A0[1])*K, A0[2]+(B0[2]-A0[2])*K];
+      const m2=[A0[0]+(B0[0]-A0[0])*(1-K), A0[1]+(B0[1]-A0[1])*(1-K), A0[2]+(B0[2]-A0[2])*(1-K)];
+      const p1=pr(m1), p2=pr(m2);
+      const col = st.conflict ? '#ff5f5f' : (st.color ? srtColor(st.color) : 'rgba(255,255,255,.22)');
+      items.push({d:(p1.d+p2.d)/2, svg:
+        `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}"
+           stroke="${col}" stroke-width="${st.conflict?2.2:1.6}" ${st.conflict?'stroke-dasharray="3 3"':''}
+           opacity="${st.color||st.conflict?0.95:0.5}"/>`});
+    });
+
+    /* 小四面体 6 边 */
+    for(let i=0;i<4;i++){
+      const slot = state.slots[key][i];
+      const piece = pieceById(slot.piece);
+      if(!piece) continue;
+      const pts = piecePoints(key, i, slot.variant);
+      const PP = pts.map(pr);
+      for(let e=0;e<6;e++){
+        const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
+        const p1=PP[a], p2=PP[b];
+        const st = piece.edges[e];
+        const isSelEdge = ui.sel && ui.sel.kind==='edge' && ui.sel.piece===piece.id && ui.sel.edge===e;
+        const isSelPiece = ui.sel && ui.sel.kind==='piece' && ui.sel.piece===piece.id;
+        const color = srtColor(st.srt);
+        const dash = st.style==='dashed' ? 'stroke-dasharray="7 5"' : '';
+        const w = isSelEdge?3.4:(isSelPiece?2.6:2.0);
+        let svgLine = '';
+        if(isSelEdge) svgLine += `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}" stroke="#ffffff" stroke-width="8" opacity=".35" stroke-linecap="round"/>`;
+        svgLine += `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}"
+           stroke="${color}" stroke-width="${w}" ${dash} stroke-linecap="round" opacity="${isSelEdge?1:0.95}"/>`;
+        items.push({d:(p1.d+p2.d)/2, svg:svgLine,
+          hit:`<line data-kind="edge" data-piece="${piece.id}" data-edge="${e}" data-frame="${key}" data-slot="${i}"
+             x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}"
+             stroke="transparent" stroke-width="10" style="pointer-events:stroke;cursor:pointer"/>`});
+      }
+    }
+
+    /* 插槽角点标记（顶层，避免被边遮住点击） */
+    for(let i=0;i<4;i++){
+      const p = P[i];
+      const slot = state.slots[key][i];
+      const piece = pieceById(slot.piece);
+      const isSel = ui.sel && ui.sel.kind==='slot' && ui.sel.frame===key && ui.sel.slot===i;
+      front += `<g>
+        <circle data-kind="slot" data-frame="${key}" data-slot="${i}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9"
+          fill="transparent" stroke="${isSel?'#8ab4f8':'rgba(138,180,248,.45)'}" stroke-width="${isSel?2:1}"
+          style="pointer-events:all;cursor:pointer"/>
+        <text x="${(p.x+11).toFixed(1)}" y="${(p.y-6).toFixed(1)}" font-size="11" fill="rgba(200,210,240,.8)"
+          style="pointer-events:none">${key==='upper'?'上':'下'}${SLOT_NAMES[key][i]}${piece?'':'·空'}</text>
+        ${piece?`<text x="${(p.x+11).toFixed(1)}" y="${(p.y+7).toFixed(1)}" font-size="10" fill="rgba(255,255,255,.55)"
+          style="pointer-events:none">#${piece.id}</text>`:''}
+      </g>`;
+    }
+
+    /* 大四面体名称（贴在各自顶点附近） */
+    const ap = P[0];
+    front += `<text x="${ap.x.toFixed(1)}" y="${(ap.y + (key==='upper'?-22:24)).toFixed(1)}" font-size="11"
+      fill="${key==='upper'?'rgba(180,210,255,.6)':'rgba(255,200,150,.55)'}" text-anchor="middle"
+      style="pointer-events:none">${key==='upper'?'上四面体':'下四面体'}</text>`;
+  });
+
+  items.sort((p,q)=>q.d-p.d);   /* 远 -> 近 */
+  const hitLayer = items.map(i=>i.hit||'').join('');
+  svg.innerHTML = back + items.map(i=>i.svg).join('') + hitLayer + front;
+}
+
+/* ============================================================
+   5. 小四面体调色板（两组独立摆放）
+   ============================================================ */
+const PAL_CAM = {az:-0.7, el:0.45, zoom:1, panX:0, panY:0};
+function renderPalette(){
+  ['upper','lower'].forEach(key=>{
+    const host = el(key==='upper'?'grpUpper':'grpLower');
+    let html='';
+    state.pieces.filter(p=>p.group===key).forEach(p=>{
+      const W=112,H=96;
+      const PP = fitProjector(PAL_CAM,W,H,CANON);
+      let body='';
+      for(let e=0;e<6;e++){
+        const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
+        const p1=PP[a],p2=PP[b];
+        const st=p.edges[e];
+        const isSel = ui.sel && ui.sel.piece===p.id && (ui.sel.kind==='edge' ? ui.sel.edge===e : true);
+        const color=srtColor(st.srt);
+        const dash=st.style==='dashed'?'stroke-dasharray="6 4"':'';
+        if(isSel) body+=`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#fff" stroke-width="6" opacity=".4" stroke-linecap="round"/>`;
+        body+=`<line data-kind="edge" data-piece="${p.id}" data-edge="${e}" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}"
+          stroke="${color}" stroke-width="${isSel?3.2:2.1}" ${dash} stroke-linecap="round" style="pointer-events:stroke;cursor:pointer"/>`;
+      }
+      const bad = faceViolations(p).length;
+      const used = slotsUsing(p.id);
+      html += `<div class="piece ${ui.sel&&ui.sel.piece===p.id?'sel':''}" data-piece="${p.id}">
+        <svg viewBox="0 0 ${W} ${H}" width="100%">${body}</svg>
+        <div class="cap"><b>#${p.id}</b>
+          ${used?`<span class="tag use">${used}</span>`:''}
+          <span class="tag ${bad?'bad':'ok'}">${bad?'SRT△'+bad:'合规则'}</span>
+        </div></div>`;
+    });
+    host.innerHTML=html;
+  });
+}
+function slotsUsing(pid){
+  const out=[];
+  ['upper','lower'].forEach(k=>{
+    state.slots[k].forEach((s,i)=>{ if(s.piece===Number(pid)) out.push((k==='upper'?'上':'下')+SLOT_NAMES[k][i]); });
+  });
+  return out.join(' ');
+}
+function faceViolations(p){
+  const bad=[];
+  FACES.forEach((f,fi)=>{
+    const [x,y,z]=f;
+    const c=[p.edges[edgeIdxOf(x,y)].srt, p.edges[edgeIdxOf(x,z)].srt, p.edges[edgeIdxOf(y,z)].srt];
+    const ok = new Set(c).size===3 && SRT_ORDER.every(s=>c.includes(s));
+    if(!ok) bad.push({face:f, colors:c});
+  });
+  return bad;
+}
+
+/* ============================================================
+   5b. SRT 配色组
+   ============================================================ */
+function renderPalettes(){
+  const host = el('palBox');
+  if(!host) return;
+  host.innerHTML = state.palettes.map(p=>{
+    const act = p.id===state.paletteId;
+    return `<div class="palrow ${act?'on':''}" data-palsel="${p.id}">
+      <div class="palname"><input type="text" value="${p.name.replace(/"/g,'&quot;')}" data-palname="${p.id}" spellcheck="false"></div>
+      <div class="palsw">
+        ${SRT_ORDER.map(k=>`<label title="${k} ${SRT[k].cn}">
+          <input type="color" data-pal="${p.id}" data-code="${k}" value="${p.colors[k]}"><span>${k}</span></label>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  el('palCur').textContent = '当前：'+(activePalette()?activePalette().name:'');
+}
+function setActivePalette(id){
+  if(!state.palettes.some(p=>p.id===id)) return;
+  state.paletteId = id;
+  applyPaletteVars();
+  /* 只切换高亮，不重建列表（避免打断正在编辑的组名/取色器） */
+  document.querySelectorAll('#palBox .palrow').forEach(r=>r.classList.toggle('on', r.dataset.palsel===id));
+  const cur = el('palCur'); if(cur) cur.textContent = '当前：'+(activePalette()?activePalette().name:'');
+  renderScene(); renderPalette(); renderGrid(); renderSel();
+  saveState();
+}
+
+/* ============================================================
+   6. 属性 Grid（四个槽位）
+   ============================================================ */
+function renderGrid(){
+  const key = ui.tab;
+  const grp = key==='upper'?[1,2,3,4]:[5,6,7,8];
+  let html = `<table class="grid"><tbody>`;
+  for(let i=0;i<4;i++){
+    const slot = state.slots[key][i];
+    const piece = pieceById(slot.piece);
+    const vc = VARIANTS[slot.variant];
+    html += `<tr data-row="${i}">
+      <td class="c-slot">
+        <span class="slotname">${SLOT_NAMES[key][i]}</span>
+        <span class="slotsub">${SLOT_SUB[key][i]}</span>
+      </td>
+      <td class="c-piece">
+        <select class="psel" data-slot="${i}">
+          ${grp.map(g=>`<option value="${g}" ${g===slot.piece?'selected':''}>#${g}</option>`).join('')}
+        </select>
+        <span class="puse">${vc.id} · ${vc.desc}</span>
+        <button class="mini" data-act="align" data-frame="${key}" data-slot="${i}">对齐</button>
+      </td>
+      <td class="c-var"><div class="vgrid" id="vg-${key}-${i}"></div></td>
+      <td class="c-state" id="st-${key}-${i}"></td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  el('gridBox').innerHTML = html;
+  updatePreviews();
+}
+function updatePreviews(){
+  const key = ui.tab;
+  for(let i=0;i<4;i++){
+    const host = el(`vg-${key}-${i}`);
+    if(!host) continue;
+    const slot = state.slots[key][i];
+    const piece = pieceById(slot.piece);
+    let html='';
+    VARIANTS.forEach((v,vi)=>{
+      const cf = variantConflicts(key,i,vi);
+      const bad = cf.color>0;
+      const W=46,H=42;
+      let g='';
+      if(piece){
+        const sock = socketPoints(key,i);
+        const pts3 = [sock.apex, ...sock.basePts];
+        const perm = v.perm;
+        const pp = [sock.apex, null, null, null];
+        for(let p=1;p<=3;p++) pp[p] = sock.basePts[perm[p-1]];
+        /* 统一投影：以插槽外框为基准做等比缩放，插槽与积木同一坐标系 */
+        const prc = projector(cam,1,1);
+        const raw = pts3.map(p=>prc(p));
+        let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+        raw.forEach(p=>{x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y);});
+        const bw=Math.max(x1-x0,1e-6), bh=Math.max(y1-y0,1e-6);
+        const k=Math.min((W-8)/bw,(H-8)/bh);
+        const cx=(x0+x1)/2, cy=(y0+y1)/2;
+        const M = p=>{ const q=prc(p); return {x:W/2+(q.x-cx)*k, y:H/2+(q.y-cy)*k}; };
+        /* 插槽淡框 */
+        for(let t=0;t<3;t++){
+          const p1=M(sock.apex), p2=M(sock.basePts[t]);
+          g += `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}" stroke="rgba(255,255,255,.14)" stroke-width="1"/>`;
+        }
+        /* 小四面体 6 边 */
+        const Q = pp.map(M);
+        for(let e=0;e<6;e++){
+          const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
+          const p1=Q[a], p2=Q[b];
+          const st=piece.edges[e];
+          g += `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}"
+            stroke="${srtColor(st.srt)}" stroke-width="1.8" ${st.style==='dashed'?'stroke-dasharray="4 3"':''} stroke-linecap="round"/>`;
+        }
+      }
+      const dotCol = bad? '#ff6b6b' : (cf.style? '#ffc857' : '#5fd38a');
+      html += `<div class="var ${vi===slot.variant?'on':''} ${bad?'bad':''}" data-slot="${i}" data-var="${vi}"
+        title="${v.id} ${v.desc}${bad?' · 与邻槽同边颜色冲突':(cf.style?' · 线型不一致':' · 有效')}">
+        <em>${v.id}</em><span class="dot" style="background:${dotCol}"></span>
+        <svg viewBox="0 0 ${W} ${H}">${g}</svg></div>`;
+    });
+    host.innerHTML = html;
+  }
+  /* 状态列 */
+  for(let i=0;i<4;i++){
+    const cell = el(`st-${ui.tab}-${i}`);
+    if(!cell) continue;
+    const cf = variantConflicts(ui.tab,i,state.slots[ui.tab][i].variant);
+    const piece = pieceById(state.slots[ui.tab][i].piece);
+    const fv = piece?faceViolations(piece).length:0;
+    cell.innerHTML =
+      (cf.color? `<span class="badge bad">色冲突${cf.color}</span>` : `<span class="badge ok">色一致</span>`) +
+      (cf.style? `<br><span class="badge warn">线型差</span>`:'') +
+      (fv? `<br><span class="badge warn">SRT△${fv}</span>`:'');
+  }
+}
+
+/* ============================================================
+   7. 选中对象 / 边编辑
+   ============================================================ */
+function renderSel(){
+  const box = el('selBox');
+  const s = ui.sel;
+  if(!s){
+    box.innerHTML = `<div class="kv">未选中。<br>· 点击画面中的<b>彩色边</b> → 设置 SRT 与虚实线<br>
+      · 点击<b>角点</b> → 选中插槽<br>· 左侧调色板可直接编辑每条边</div>`;
+    return;
+  }
+  if(s.kind==='slot'){
+    const key=s.frame, i=s.slot, slot=state.slots[key][i], piece=pieceById(slot.piece);
+    const grp = key==='upper'?[1,2,3,4]:[5,6,7,8];
+    box.innerHTML = `
+      <div class="row"><span class="lb">插槽</span><b>${key==='upper'?'上':'下'}${SLOT_NAMES[key][i]}</b>
+        <span class="badge">${SLOT_SUB[key][i]}</span></div>
+      <div class="row"><span class="lb">小四面体</span>
+        <select class="psel" data-slot="${i}" style="width:88px">
+          ${grp.map(g=>`<option value="${g}" ${g===slot.piece?'selected':''}>#${g}</option>`).join('')}
+        </select></div>
+      <div class="row"><span class="lb">摆法</span>
+        <span class="badge">${VARIANTS[slot.variant].id}</span>
+        <span class="badge">${VARIANTS[slot.variant].desc}</span></div>
+      <div class="row"><span class="lb">状态</span>${slotStatusHTML(key,i)}</div>
+      ${piece?`<div class="row"><span class="lb">6 条边</span><span class="kv">#${piece.id} · ${
+        faceViolations(piece).length? 'SRT△ 规则未过':'SRT△ 规则通过'}</span></div>`:''}
+      <div class="row"><button data-act="std" data-piece="${slot.piece}">该件标准三色</button></div>`;
+    return;
+  }
+  const p = pieceById(s.piece);
+  if(!p){ box.innerHTML=''; return; }
+  const rows = EDGE_DEFS.map((e,i)=>{
+    const st=p.edges[i];
+    return `<div class="erow ${s.kind==='edge'&&s.edge===i?'sel':''}" data-kind="edge" data-piece="${p.id}" data-edge="${i}">
+      <div class="t"><span>边 ${EDGE_LABEL[i]}</span><span class="dsh">${st.style==='dashed'?'虚线':'实线'}</span></div>
+      <div class="sw" style="background:${srtColor(st.srt)}"></div>
+    </div>`;
+  }).join('');
+  const cur = s.kind==='edge'? p.edges[s.edge] : null;
+  box.innerHTML = `
+    <div class="row"><span class="lb">小四面体</span><b>#${p.id}</b>
+      <span class="badge">${p.group==='upper'?'上组':'下组'}</span>
+      <span class="badge ${faceViolations(p).length?'bad':'ok'}">${faceViolations(p).length? 'SRT△×'+faceViolations(p).length : 'SRT△ 合规'}</span></div>
+    ${cur?`<div class="row"><span class="lb">边</span><b>${EDGE_LABEL[s.edge]}</b>
+      <div class="seg">
+        ${SRT_ORDER.map(k=>`<button class="srt-${k} ${cur.srt===k?'on':''}" data-act="srt" data-piece="${p.id}" data-edge="${s.edge}" data-srt="${k}">${k} ${SRT[k].cn}</button>`).join('')}
+      </div></div>
+      <div class="row"><span class="lb">线型</span>
+        <button class="${cur.style==='solid'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="solid">实线</button>
+        <button class="${cur.style==='dashed'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="dashed">虚线</button>
+      </div>`:''}
+    <div class="edgegrid">${rows}</div>
+    <div class="row"><button data-act="std" data-piece="${p.id}">标准三色（SRT△）</button>
+      <button data-act="flip" data-piece="${p.id}">翻转虚实</button></div>`;
+}
+function slotStatusHTML(key,i){
+  const cf = variantConflicts(key,i,state.slots[key][i].variant);
+  return (cf.color? `<span class="badge bad">色冲突 ${cf.color}</span>`:`<span class="badge ok">色一致</span>`)
+       + (cf.style? ` <span class="badge warn">线型差 ${cf.style}</span>`:'');
+}
+
+/* ============================================================
+   8. 校验
+   ============================================================ */
+function validate(){
+  const rep = {items:[], nBad:0, nWarn:0};
+  /* ① 面三色 */
+  state.pieces.forEach(p=>{
+    faceViolations(p).forEach(v=>{
+      rep.items.push({sev:'bad', text:`小四面体 #${p.id} 面(${v.face.join('')}) 三边为 ${v.colors.join('/')}，应 S·R·T 各一次`,
+        piece:p.id, edge:v.face});
+      rep.nBad++;
+    });
+  });
+  /* ② 大边两端一致 */
+  ['upper','lower'].forEach(key=>{
+    BIG_EDGES.forEach(([a,b])=>{
+      const st = bigEdgeStatus(key,a,b);
+      if(st.missing){
+        rep.items.push({sev:'warn', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_NAMES[key][a]}${SLOT_NAMES[key][b]}：有槽位未放置小四面体`});
+        rep.nWarn++;
+      }else if(st.conflict){
+        rep.items.push({sev:'bad', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_NAMES[key][a]}${SLOT_NAMES[key][b]}：两端颜色冲突 ${st.a.srt} ≠ ${st.b.srt}`,
+          frame:key, slot:a});
+        rep.nBad++;
+      }else if(st.styleMismatch){
+        rep.items.push({sev:'warn', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_NAMES[key][a]}${SLOT_NAMES[key][b]}：两端线型不一致（${st.a.style} / ${st.b.style}）`,
+          frame:key, slot:a});
+        rep.nWarn++;
+      }
+    });
+  });
+  lastReport = rep;
+  renderReport();
+  return rep;
+}
+function renderReport(){
+  const box = el('repBox'), sum = el('repSum');
+  if(!lastReport){
+    box.innerHTML = `<div class="kv">点顶部「校验」检查 SRT△ 规则与大边一致性。</div>`;
+    sum.textContent = '未校验';
+    return;
+  }
+  const r = lastReport;
+  sum.textContent = `异常 ${r.nBad} · 提示 ${r.nWarn}`;
+  if(!r.items.length){
+    box.innerHTML = `<div class="ritem ok">全部通过：8 个小四面体均满足 SRT△ 规则，大边两端同色同线型。</div>`;
+    return;
+  }
+  box.innerHTML = r.items.map((it,i)=>`<div class="ritem ${it.sev}" data-ri="${i}">${it.text}</div>`).join('');
+}
+
+/* ============================================================
+   9. 交互
+   ============================================================ */
+function el(id){ return document.getElementById(id); }
+function commit(reason){
+  saveState();
+  renderScene(); renderPalette(); renderGrid(); renderSel();
+  if(reason==='validate') renderReport();
+}
+
+document.addEventListener('click', ev=>{
+  const t = ev.target;
+  /* 配色组选中（点组名/行空白处；输入框内部不触发） */
+  if(t.tagName!=='INPUT'){
+    const pal = t.closest ? t.closest('[data-palsel]') : null;
+    if(pal){ setActivePalette(pal.dataset.palsel); return; }
+  }
+  /* 边 / 槽位选择（SVG 内） */
+  const pick = t.closest ? t.closest('[data-kind]') : null;
+  if(pick){
+    const kind = pick.dataset.kind;
+    if(kind==='edge'){
+      ui.sel = {kind:'edge', piece:Number(pick.dataset.piece), edge:Number(pick.dataset.edge),
+                frame:pick.dataset.frame||null, slot:pick.dataset.slot!==undefined?Number(pick.dataset.slot):null};
+    }else if(kind==='slot'){
+      ui.sel = {kind:'slot', frame:pick.dataset.frame, slot:Number(pick.dataset.slot)};
+      ui.tab = pick.dataset.frame;
+      document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
+    }
+    renderScene(); renderPalette(); renderGrid(); renderSel();
+    return;
+  }
+  /* 摆法切换 */
+  const varEl = t.closest ? t.closest('.var') : null;
+  if(varEl){
+    const slotIdx = Number(varEl.dataset.slot), vi = Number(varEl.dataset.var);
+    state.slots[ui.tab][slotIdx].variant = vi;
+    ui.sel = {kind:'slot', frame:ui.tab, slot:slotIdx};
+    commit();
+    return;
+  }
+  /* 边属性按钮 */
+  const act = t.closest ? t.closest('[data-act]') : null;
+  if(act){
+    const a = act.dataset.act;
+    const p = pieceById(act.dataset.piece);
+    if(a==='srt' && p){ p.edges[Number(act.dataset.edge)].srt = act.dataset.srt; commit(); }
+    else if(a==='style' && p){ p.edges[Number(act.dataset.edge)].style = act.dataset.style; commit(); }
+    else if(a==='std' && p){ STD_EDGES.forEach((e,i)=>{ p.edges[i].srt=e.srt; }); commit(); }
+    else if(a==='flip' && p){ p.edges.forEach(e=>{ e.style = e.style==='dashed'?'solid':'dashed'; }); commit(); }
+    else if(a==='align'){
+      const key = act.dataset.frame || ui.tab;
+      const i = Number(act.dataset.slot);
+      state.slots[key][i].variant = bestVariant(key,i).variant;
+      commit();
+    }
+    return;
+  }
+  /* 属性表下拉 */
+  const sel = t.closest ? t.closest('select.psel') : null;
+  if(sel){
+    const idx = Number(sel.dataset.slot);
+    state.slots[ui.tab][idx].piece = Number(sel.value);
+    commit();
+    return;
+  }
+  /* 侧栏页签 */
+  const tab = t.closest ? t.closest('[data-tab]') : null;
+  if(tab){
+    ui.tab = tab.dataset.tab;
+    document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
+    renderGrid(); renderSel();
+    return;
+  }
+  /* 视角预设 */
+  const vw = t.closest ? t.closest('[data-view]') : null;
+  if(vw){
+    const v = vw.dataset.view;
+    if(v==='iso'){ cam.az=-0.62; cam.el=0.42; }
+    else if(v==='front'){ cam.az=0; cam.el=0.05; }
+    else if(v==='top'){ cam.az=0; cam.el=1.42; }
+    else { cam.az=-0.62; cam.el=0.42; cam.zoom=1; cam.panX=0; cam.panY=0; }
+    scheduleRender();
+    return;
+  }
+  /* 校验报告条目 */
+  const ri = t.closest ? t.closest('[data-ri]') : null;
+  if(ri && lastReport){
+    const it = lastReport.items[Number(ri.dataset.ri)];
+    if(it){
+      if(it.piece!==undefined){ ui.sel={kind:'piece', piece:it.piece}; }
+      else if(it.frame){ ui.sel={kind:'slot', frame:it.frame, slot:it.slot}; ui.tab=it.frame;
+        document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab)); }
+      renderScene(); renderPalette(); renderGrid(); renderSel();
+    }
+    return;
+  }
+  /* 调色板整件选中 */
+  const pc = t.closest ? t.closest('.piece') : null;
+  if(pc){
+    ui.sel = {kind:'piece', piece:Number(pc.dataset.piece)};
+    renderScene(); renderPalette(); renderSel();
+  }
+});
+
+/* 配色组：改色 / 改名 / 新增 */
+document.addEventListener('input', e=>{
+  const t = e.target;
+  if(!(t.matches && t.matches('input[type=color][data-pal]'))) return;
+  const p = state.palettes.find(x=>x.id===t.dataset.pal);
+  if(!p) return;
+  p.colors[t.dataset.code] = t.value;
+  state.paletteId = p.id;
+  applyPaletteVars();
+  renderScene(); renderPalette(); renderGrid(); renderSel();
+  saveState();
+});
+document.addEventListener('focusin', e=>{
+  const t = e.target;
+  if(!(t.matches && t.matches('input[type=text][data-palname]'))) return;
+  const id = t.dataset.palname;
+  if(state.paletteId!==id) setActivePalette(id);
+});
+document.addEventListener('change', e=>{
+  const t = e.target;
+  if(!(t.matches && t.matches('input[type=text][data-palname]'))) return;
+  const p = state.palettes.find(x=>x.id===t.dataset.palname);
+  if(!p) return;
+  p.name = (t.value||'').trim().slice(0,24) || p.name;
+  state.paletteId = p.id;
+  renderPalettes();
+  saveState();
+});
+el('btnAddPal').addEventListener('click', ()=>{
+  const base = activePalette();
+  const id = 'p'+Date.now().toString(36);
+  state.palettes.push({id, name:'配色组 '+(state.palettes.length+1), colors:{S:base.colors.S,R:base.colors.R,T:base.colors.T}});
+  state.paletteId = id;
+  applyPaletteVars();
+  renderPalettes(); renderScene(); renderPalette(); renderGrid(); renderSel();
+  saveState();
+});
+
+/* 滑块 */
+function bindSlider(id, key, field, fmt){
+  const s = el(id);
+  const out = el(id+'v');
+  const upd = ()=>{
+    state.frames[key][field] = Number(s.value);
+    out.textContent = fmt(s.value);
+    scheduleRender();
+  };
+  s.addEventListener('input', upd);
+}
+bindSlider('rotU','upper','rotationDeg', v=>v+'°');
+bindSlider('offU','upper','axisOffset', v=>Number(v).toFixed(2));
+bindSlider('rotD','lower','rotationDeg', v=>v+'°');
+bindSlider('offD','lower','axisOffset', v=>Number(v).toFixed(2));
+
+/* 按钮 */
+el('btnAlign').addEventListener('click', ()=>{
+  autoAlign('upper'); autoAlign('lower');
+  validate(); commit('validate');
+});
+el('btnValidate').addEventListener('click', ()=>{ validate(); commit('validate'); });
+el('btnExport').addEventListener('click', ()=>{
+  const data = JSON.stringify(state, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '星四面体配置.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+});
+el('btnImport').addEventListener('click', ()=> el('fileImport').click());
+el('fileImport').addEventListener('change', e=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    try{
+      const s = JSON.parse(rd.result);
+      state = normalize(s);
+      syncSliders();
+      commit();
+      el('saveState').textContent = '已导入';
+    }catch(err){
+      el('saveState').textContent = '导入失败';
+      alert('JSON 解析失败：'+err.message);
+    }
+  };
+  rd.readAsText(f);
+  e.target.value='';
+});
+el('btnReset').addEventListener('click', ()=>{
+  const b = el('btnReset');
+  if(b.dataset.arm !== '1'){
+    b.dataset.arm='1'; b.textContent='确认重置？'; b.classList.add('on');
+    setTimeout(()=>{ if(b.dataset.arm==='1'){ b.dataset.arm='0'; b.textContent='重置'; b.classList.remove('on'); } }, 4000);
+    return;
+  }
+  b.dataset.arm='0'; b.textContent='重置'; b.classList.remove('on');
+  state = defaultState();
+  syncSliders();
+  lastReport=null; renderReport();
+  commit();
+});
+
+function syncSliders(){
+  el('rotU').value = state.frames.upper.rotationDeg; el('rotUv').textContent = state.frames.upper.rotationDeg+'°';
+  el('offU').value = state.frames.upper.axisOffset; el('offUv').textContent = state.frames.upper.axisOffset.toFixed(2);
+  el('rotD').value = state.frames.lower.rotationDeg; el('rotDv').textContent = state.frames.lower.rotationDeg+'°';
+  el('offD').value = state.frames.lower.axisOffset; el('offDv').textContent = state.frames.lower.axisOffset.toFixed(2);
+}
+
+/* 视图拖拽 */
+(function(){
+  const svg = el('view');
+  let drag=null;
+  svg.addEventListener('pointerdown', e=>{
+    drag = {x:e.clientX, y:e.clientY, az:cam.az, el:cam.el, moved:0};
+    svg.classList.add('drag');
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    drag.moved = Math.max(drag.moved, Math.hypot(dx,dy));
+    cam.az = drag.az + dx*0.008;
+    cam.el = Math.max(-1.45, Math.min(1.45, drag.el + dy*0.008));
+    scheduleRender();
+  });
+  const end = e=>{
+    if(drag) svg.classList.remove('drag');
+    drag=null;
+  };
+  svg.addEventListener('pointerup', end);
+  svg.addEventListener('pointercancel', end);
+  svg.addEventListener('wheel', e=>{
+    e.preventDefault();
+    cam.zoom = Math.max(0.35, Math.min(3, cam.zoom * (1 - e.deltaY*0.0012)));
+    scheduleRender();
+  }, {passive:false});
+})();
+
+/* 渲染调度 */
+let rafId=null;
+function scheduleRender(){
+  if(rafId) return;
+  rafId = requestAnimationFrame(()=>{
+    rafId=null;
+    renderScene();
+    updatePreviews();
+  });
+}
+window.addEventListener('resize', ()=>scheduleRender());
+
+/* ============================================================
+   10. 启动
+   ============================================================ */
+(function init(){
+  const had = loadState();
+  syncSliders();
+  applyPaletteVars();
+  renderScene(); renderPalette(); renderPalettes(); renderGrid(); renderSel(); renderReport();
+  if(!had) saveState();
+})();
+</script>
+</body>
+</html>
