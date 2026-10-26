@@ -34,6 +34,10 @@
   .flabel{font-size:11px;color:var(--txt-dim);white-space:nowrap}
   .fgroup label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--txt-dim)}
   .fgroup input[type=range]{width:96px;accent-color:var(--accent)}
+  .fgroup select.palpick{background:#181828;color:#ddd;border:1px solid var(--line);border-radius:6px;
+    font-size:11px;padding:2px 4px;max-width:116px}
+  .fgroup input[type=color]{width:20px;height:16px;padding:0;border:1px solid var(--line);
+    border-radius:3px;background:none;cursor:pointer}
   .val{color:var(--accent);font-variant-numeric:tabular-nums;min-width:42px;display:inline-block}
   .actions{margin-left:auto;display:flex;align-items:center;gap:6px}
   button{font:inherit;font-size:11px;padding:5px 10px;background:#22223a;color:#ddd;
@@ -43,7 +47,7 @@
   button.on{background:#3a4a7a;border-color:var(--accent);color:#fff}
   #saveState{font-size:10px;color:var(--txt-dim);margin-left:6px;min-width:92px;text-align:right}
   /* ---------- 主区 ---------- */
-  main{flex:1;display:grid;grid-template-columns:252px 1fr 404px;min-height:0}
+  main{flex:1;display:grid;grid-template-columns:250px 1fr 404px;min-height:0}
   aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
   aside.right{border-right:none;border-left:1px solid var(--line)}
   aside::-webkit-scrollbar{width:8px}
@@ -56,16 +60,25 @@
   .sect h4{margin:0 0 7px;font-size:11px;color:var(--txt-dim);font-weight:600;letter-spacing:.5px;
     display:flex;justify-content:space-between;align-items:center}
   /* 小四面体调色板 */
-  .pieces{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-  .piece{border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02);
-    padding:4px;cursor:pointer;position:relative}
+  .pieces{display:grid;grid-template-columns:1fr;gap:0}
+  .vgrid6{flex:1 1 auto;display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-top:0}
+  .vcell{border:1px solid transparent;border-radius:4px;padding:0}
+  .vcell:hover{border-color:rgba(138,180,248,.55);background:rgba(255,255,255,.05)}
+  .vcell svg{display:block;width:100%;height:auto}
+  .vcell.dragging{opacity:.45;border-color:var(--accent)}
+  .piece{display:flex;align-items:center;gap:8px;
+    border:none;border-bottom:1px solid var(--line);border-radius:0;background:none;
+    padding:5px 2px;position:relative}
+  .piece:last-child{border-bottom:none}
+  .piece.sel{background:rgba(138,180,248,.08)}
+  .piece:hover{background:rgba(255,255,255,.03)}
   .piece:hover{border-color:rgba(138,180,248,.5)}
   .piece.sel{border-color:var(--accent);box-shadow:0 0 0 1px rgba(138,180,248,.35) inset}
   .piece svg{display:block;width:100%;height:auto}
-  .piece .cap{display:flex;justify-content:space-between;align-items:center;font-size:10px;
-    color:var(--txt-dim);padding:1px 2px 0}
+  .piece .cap{flex:0 0 auto;display:flex;justify-content:flex-start;align-items:center;font-size:10px;gap:6px;
+    color:var(--txt-dim);padding:0;white-space:nowrap}
   .piece .cap b{color:#ddd;font-weight:600;font-size:11px}
-  .tag{font-size:9px;padding:1px 5px;border-radius:8px;border:1px solid var(--line)}
+  .tag{font-size:10px;padding:0;border:none;border-radius:0;white-space:nowrap}
   .tag.ok{color:var(--ok);border-color:rgba(95,211,138,.4)}
   .tag.bad{color:var(--bad);border-color:rgba(255,107,107,.45)}
   .tag.use{color:var(--accent);border-color:rgba(138,180,248,.45)}
@@ -74,14 +87,13 @@
     radial-gradient(1200px 700px at 50% 45%, #0d1020 0%, #050508 70%)}
   #view{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}
   #view.drag{cursor:grabbing}
+  #view.pan{cursor:move}
+  #view polygon[data-kind=piece]:hover{fill:rgba(138,180,248,.10)}
   #hud{position:absolute;left:12px;bottom:10px;font-size:10px;color:var(--txt-dim);
     background:rgba(8,8,16,.7);padding:5px 9px;border-radius:6px;border:1px solid var(--line);
     pointer-events:none;line-height:1.6}
-  #viewctl{position:absolute;right:12px;top:10px;display:flex;gap:5px}
-  #legend{position:absolute;left:12px;top:10px;font-size:10px;color:var(--txt-dim);
-    background:rgba(8,8,16,.7);padding:6px 9px;border-radius:6px;border:1px solid var(--line);
-    line-height:1.7;pointer-events:none}
-  #legend i{display:inline-block;width:16px;height:0;border-top:2px solid;margin-right:5px;
+  #viewctl{position:absolute;right:12px;bottom:10px;display:flex;gap:5px}
+  #hud i{display:inline-block;width:16px;height:0;border-top:2px solid;margin-right:5px;
     vertical-align:middle}
   /* 属性区 */
   .selbox .row{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap}
@@ -112,7 +124,11 @@
   table.grid{width:100%;border-collapse:collapse}
   table.grid td{border-top:1px solid var(--line);padding:5px 3px;vertical-align:middle}
   table.grid tr:hover td{background:rgba(255,255,255,.025)}
-  td.c-slot{width:48px}
+  /* 选中对象所在槽位行的高亮 */
+  table.grid tr.hi td{background:rgba(138,180,248,.10)}
+  table.grid tr.hi:hover td{background:rgba(138,180,248,.16)}
+  table.grid tr.hi td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+  td.c-slot{width:62px}
   .slotname{display:block;font-size:11px;color:#eee;font-weight:600}
   .slotsub{display:block;font-size:9px;color:var(--txt-dim)}
   td.c-piece{width:74px}
@@ -149,40 +165,40 @@
   details.help b{color:#ccc}
   .kv{font-size:10px;color:var(--txt-dim);line-height:1.7}
   .kv b{color:#ddd}
-  /* SRT 配色组 */
-  .palrow{border:1px solid var(--line);border-radius:8px;padding:5px 6px;margin-bottom:5px;
-    background:rgba(255,255,255,.02);cursor:pointer}
-  .palrow:hover{border-color:rgba(138,180,248,.45)}
-  .palrow.on{border-color:var(--accent);background:rgba(138,180,248,.12)}
-  .palname input{width:100%;background:transparent;border:none;color:#eee;font:inherit;font-size:11px;
-    outline:none;border-bottom:1px dashed transparent;padding:1px 0}
-  .palname input:hover{border-bottom-color:rgba(255,255,255,.18)}
-  .palname input:focus{border-bottom-color:var(--accent)}
-  .palsw{display:flex;gap:6px;margin-top:5px}
-  .palsw label{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txt-dim);cursor:pointer}
-  .palsw input[type=color]{width:20px;height:14px;padding:0;border:1px solid var(--line);
-    border-radius:3px;background:none;cursor:pointer}
+  /* SRT 配色组：顶栏下拉 + 取色器 */
   /* 分组镜像开关 */
   button.flipbtn{font-size:9px;padding:1px 7px;border-radius:9px;line-height:1.5;
     color:var(--txt-dim);border-color:var(--line)}
   button.flipbtn:hover{color:#ddd;border-color:rgba(138,180,248,.6)}
   button.flipbtn.on{background:rgba(138,180,248,.25);border-color:var(--accent);color:#fff}
+  /* 拖动放置 */
+  #dndGhost{position:fixed;z-index:99;pointer-events:none;font-size:11px;padding:3px 8px;border-radius:6px;
+    background:rgba(20,20,34,.96);border:1px solid var(--accent);color:#fff;white-space:nowrap;
+    box-shadow:0 6px 18px rgba(0,0,0,.55)}
+  #dndGhost.bad{border-color:var(--bad);color:#ffb9b9}
+  table.grid tr.drop-hover td{background:rgba(95,211,138,.18)}
+  .piece.dragging{opacity:.45;border-color:var(--accent)}
+  body.dnd{user-select:none;cursor:grabbing}
+  /* 左栏参数控件 */
+  .pgroup{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pgroup select.palpick{flex:1 1 100%;background:#181828;color:#ddd;border:1px solid var(--line);
+    border-radius:6px;font-size:13px;padding:5px 7px}
+  .pgroup label{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--txt-dim)}
+  .pgroup input[type=color]{width:30px;height:22px;padding:0;border:1px solid var(--line);
+    border-radius:4px;background:none;cursor:pointer}
+  .pgroup button{padding:5px 10px;font-size:13px}
+  .sliderrow{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--txt-dim);margin-bottom:10px}
+  .sliderrow input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
+  .sliderrow .val{min-width:46px;text-align:right;color:var(--accent);font-variant-numeric:tabular-nums;font-size:12px}
+  .btnrow{display:flex;gap:8px;margin-top:4px}
+  .btnrow button{flex:1}
+  .btnrow button.flipbtn{font-size:12px;padding:6px 10px;border-radius:6px}
 </style>
 </head>
 <body>
 <div id="app">
   <header id="topbar">
     <div class="brand">星四面体 · 配置编辑器<span class="sub">Merkaba / SRT 三角</span></div>
-    <div class="fgroup">
-      <span class="flabel">上四面体</span>
-      <label>旋转<input type="range" id="rotU" min="-180" max="180" step="1" value="0"><span class="val" id="rotUv">0°</span></label>
-      <label>轴移<input type="range" id="offU" min="-0.8" max="0.8" step="0.01" value="0"><span class="val" id="offUv">0.00</span></label>
-    </div>
-    <div class="fgroup">
-      <span class="flabel">下四面体</span>
-      <label>旋转<input type="range" id="rotD" min="-180" max="180" step="1" value="0"><span class="val" id="rotDv">0°</span></label>
-      <label>轴移<input type="range" id="offD" min="-0.8" max="0.8" step="0.01" value="0"><span class="val" id="offDv">0.00</span></label>
-    </div>
     <div class="actions">
       <button id="btnAlign">自动对齐</button>
       <button id="btnValidate">校验</button>
@@ -195,56 +211,52 @@
   </header>
   <main>
     <aside id="left">
-      <div class="ptitle">小四面体<span class="hint">两组 · 各四个</span></div>
       <div class="sect">
-        <h4>SRT 配色组<span class="hint" id="palCur"></span></h4>
-        <div id="palBox"></div>
-        <button id="btnAddPal" style="width:100%;margin-top:6px">新增配色组</button>
+        <h4>配色</h4>
+        <div class="pgroup">
+          <select id="palSelect" class="palpick" title="SRT 配色组"></select>
+          <label title="S 悦性 颜色">S<input type="color" id="palColorS"></label>
+          <label title="R 变性 颜色">R<input type="color" id="palColorR"></label>
+          <label title="T 惰性 颜色">T<input type="color" id="palColorT"></label>
+          <button id="btnAddPal" title="新增配色组">+</button>
+        </div>
       </div>
       <div class="sect">
-        <h4>上组 · 1 – 4<span style="display:flex;gap:4px"><button class="flipbtn" id="seqUpper" data-seq="upper" title="槽位序列 shift（S0-S5）：四个槽位的内容（件+摆法）轮换，顶点槽固定">S0</button><button class="flipbtn" id="flipUpper" data-mode="upper" title="切换组模式（shift 0-5）">R0</button></span></h4>
-        <div class="pieces" id="grpUpper"></div>
+        <h4>上四面体</h4>
+        <label class="sliderrow">旋转<input type="range" id="rotU" min="-180" max="180" step="1" value="0"><span class="val" id="rotUv">0°</span></label>
+        <label class="sliderrow">轴移<input type="range" id="offU" min="-0.8" max="0.8" step="0.01" value="0"><span class="val" id="offUv">0.00</span></label>
+        <div class="btnrow">
+          <button class="flipbtn" id="seqUpper" data-seq="upper" title="Shift 槽位（0-5）：四个槽位的内容轮换，顶点槽固定">Shift 槽位 0</button>
+          <button class="flipbtn" id="flipUpper" data-mode="upper" title="组模式（0-5）：件内摆法的组级偏移">R0</button>
+        </div>
       </div>
       <div class="sect">
-        <h4>下组 · 5 – 8<span style="display:flex;gap:4px"><button class="flipbtn" id="seqLower" data-seq="lower" title="槽位序列 shift（S0-S5）：四个槽位的内容（件+摆法）轮换，顶点槽固定">S0</button><button class="flipbtn" id="flipLower" data-mode="lower" title="切换组模式（shift 0-5）">R0</button></span></h4>
-        <div class="pieces" id="grpLower"></div>
-      </div>
-      <div class="sect">
-        <details class="help" open>
-          <summary>模型说明</summary>
-          <p style="margin:6px 0 0">
-            星四面体 = 上下两个大四面体（轴对齐、可绕竖轴旋转、可沿轴上下滑）。<br>
-            每个大四面体四角各有一个 <b>3D 插槽</b>，像积木一样放入一个小四面体（1–4 归上组，5–8 归下组）。<br>
-            小四面体 6 条边各带一个 <b>SRT</b>（S 悦性 / R 变性 / T 惰性）与 <b>实线 / 虚线</b>；同一小四面体内，<b>同色（S、R 或 T）的两条边虚实一致</b>，按色一次设置。<br>
-            每个插槽有 <b>6 种摆法</b>（绕轴 120°×3 旋转 ×2 镜像）；与大四面体另一端的同一条边颜色冲突者标为无效（虚线框）。<br>
-            校验：① 每小四面体每个面三边恰为 S/R/T 各一次；② 每条大边两端同色同线型。<br>
-            <b>分组整体 shift</b>：① 组模式 R0–R5 = 每件摆法的组级偏移；② 槽位序列 S0–S5 = 四个槽位的内容（件+摆法）按同构的六种置换轮换（顶点槽固定）。<br>
-            <b>SRT 配色组</b>可增删改，当前所用组与全部组定义都会写入导出的 JSON。
-          </p>
-        </details>
+        <h4>下四面体</h4>
+        <label class="sliderrow">旋转<input type="range" id="rotD" min="-180" max="180" step="1" value="0"><span class="val" id="rotDv">0°</span></label>
+        <label class="sliderrow">轴移<input type="range" id="offD" min="-0.8" max="0.8" step="0.01" value="0"><span class="val" id="offDv">0.00</span></label>
+        <div class="btnrow">
+          <button class="flipbtn" id="seqLower" data-seq="lower" title="Shift 槽位（0-5）：四个槽位的内容轮换，顶点槽固定">Shift 槽位 0</button>
+          <button class="flipbtn" id="flipLower" data-mode="lower" title="组模式（0-5）：件内摆法的组级偏移">R0</button>
+        </div>
       </div>
     </aside>
 
     <section id="stage">
       <svg id="view"></svg>
-      <div id="legend">
-        <div><i style="border-color:var(--S)"></i>S 悦性　<i style="border-color:var(--R)"></i>R 变性　<i style="border-color:var(--T)"></i>T 惰性</div>
-        <div>实线 = 实　虚线 = 虚（同一小四面体内同色边同虚实）</div>
-      </div>
       <div id="viewctl">
         <button data-view="iso">斜视</button>
         <button data-view="front">正视</button>
         <button data-view="top">俯视</button>
         <button data-view="reset">复位</button>
       </div>
-      <div id="hud">拖拽 = 旋转视角 · 滚轮 = 缩放<br>点击边 = 改 SRT / 虚实 · 点击角点 = 选插槽</div>
+      <div id="hud"><div><i style="border-color:var(--S)"></i>S 悦性　<i style="border-color:var(--R)"></i>R 变性　<i style="border-color:var(--T)"></i>T 惰性</div>
+        <div>实线 = 实　虚线 = 虚（由卦象三爻决定：三爻=S 二爻=R 初爻=T，可交错）</div>
+        <div>空白左键拖 = 旋转 · 右键拖 = 平移 · 滚轮 = 缩放</div>
+        <div>点件/棱/角点 = 选槽位 · 按住件或棱拖到角点 = 放置（同组交换）</div>
+        <div><span id="camInfo"></span></div></div>
     </section>
 
     <aside class="right" id="right">
-      <div class="sect selbox">
-        <h4>选中对象</h4>
-        <div id="selBox"></div>
-      </div>
       <div class="sect">
         <h4>属性 Grid · 四个槽位</h4>
         <div class="tabs">
@@ -351,6 +363,34 @@ function groupSeq(key){
   const g = state.groups && state.groups[key];
   return (g && typeof g.seq==='number' && g.seq>=0 && g.seq<6) ? g.seq : 0;
 }
+/* 槽位换件：若该件已被同组别的槽位占用，自动与它对调位置（避免两槽放同一件） */
+function setSlotPiece(key, idx, pid){
+  const slots = state.slots[key];
+  if(!slots || !slots[idx]) return;
+  const id = Number(pid);
+  const other = slots.findIndex((s,i)=> i!==idx && Number(s.piece)===id);
+  if(other >= 0) slots[other].piece = slots[idx].piece;   /* 原占用者换到本槽原来的件 */
+  slots[idx].piece = id;
+  ui.sel = {kind:'slot', frame:key, slot:idx};            /* 选中落到槽位 */
+  commit();
+}
+/* 槽位换件 + 指定摆法（拖动 6 种摆法缩略图时用）：两个槽位的「件+摆法」成对互换 */
+function setSlotPieceVar(key, idx, pid, variant){
+  const slots = state.slots[key];
+  if(!slots || !slots[idx]) return;
+  const id = Number(pid);
+  const v = Number(variant);
+  const other = slots.findIndex((s,i)=> i!==idx && Number(s.piece)===id);
+  const oldPiece = slots[idx].piece, oldVar = slots[idx].variant;
+  if(other >= 0){
+    slots[other].piece = oldPiece;
+    slots[other].variant = oldVar;
+  }
+  slots[idx].piece = id;
+  if(v>=0 && v<6) slots[idx].variant = v;
+  ui.sel = {kind:'slot', frame:key, slot:idx};            /* 选中落到槽位 */
+  commit();
+}
 /* 步进槽位序列 shift：把该组 4 个槽位的内容（件+摆法）按下一档差分置换搬运 */
 function stepSlotShift(key){
   const slots = state.slots[key];
@@ -385,7 +425,7 @@ const UP_VERTS = [
 ];
 const DOWN_VERTS = UP_VERTS.map(v => [v[0], v[1], -v[2]]);
 const CANON = UP_VERTS;                 /* 小四面体调色板用的标准姿态 */
-const K = 0.42;                         /* 小四面体占角比例 */
+const K = 0.5;                          /* 小四面体占角比例：0.5 → 相邻件底顶点在大边中点重合，大边 = 两件尖边首尾相接 */
 const BASE_SCALE = 205;                 /* 主视图投影尺度 */
 
 /* 标准三色（K4 一因子分解：每面恰含 S/R/T 各一次） */
@@ -398,7 +438,10 @@ const STD_EDGES = [
    1. 状态
    ============================================================ */
 let state = defaultState();
-const cam = {az:-0.62, el:0.42, zoom:1, panX:0, panY:0};
+/* 主图默认视角：方位角 az = -199°，仰角 el = -10°（度 → 弧度），zoom 1、无平移 */
+const DEG = Math.PI/180;
+const VIEW_CAM = {az:-199*DEG, el:-10*DEG, zoom:1, panX:0, panY:0};
+const cam = {...VIEW_CAM};
 const ui  = {tab:'upper', sel:null};     /* sel: {kind:'edge'|'piece'|'slot', piece, edge, frame, slot} */
 let lastReport = null;
 
@@ -409,7 +452,7 @@ function defaultState(){
   }
   const slots = {upper:[], lower:[]};
   /* 默认摆法取一组自洽解：8 件均满足 SRT△，且每个大边两端同色 */
-  const DEF_VARIANTS = [0,3,2,5];   /* R0, M0, R2, M2 */
+  const DEF_VARIANTS = [1,5,0,4];   /* R1, M2, R0, M1：零色冲突且大边虚实全交错 */
   for(let i=0;i<4;i++){
     slots.upper.push({piece:1+i, variant:DEF_VARIANTS[i]});
     slots.lower.push({piece:5+i, variant:DEF_VARIANTS[i]});
@@ -451,6 +494,47 @@ function applyPaletteVars(){
   });
 }
 function pieceById(id){ return state.pieces.find(p=>p.id===Number(id)) || null; }
+/* 八卦名（帛书序）：1乾 2艮 3坎 4震 5坤 6兑 7离 8巽 */
+const BAGUA = ['乾','艮','坎','震','坤','兑','离','巽'];
+function pieceName(id){
+  const n = Number(id);
+  const g = BAGUA[n-1];
+  return g ? n+g : String(n);
+}
+/* 八卦三爻 [初,二,三]，1=阳（实线）0=阴（虚线）：1乾 2艮 3坎 4震 5坤 6兑 7离 8巽 */
+const GUA_LINES = {
+  1:[1,1,1], 2:[0,0,1], 3:[0,1,0], 4:[1,0,0],
+  5:[0,0,0], 6:[1,1,0], 7:[1,0,1], 8:[0,1,1]
+};
+/* 爻位 ↔ 颜色：三爻 = S，二爻 = R，初爻 = T */
+const GUA_SRT_LINE = {S:2, R:1, T:0};
+function guaLines(id){ return GUA_LINES[Number(id)] || [1,1,1]; }
+/* 线型由卦象决定：同一 S/R/T 的边虚实一致，无需人工配置 */
+function applyGuaStyles(pieces){
+  (pieces||[]).forEach(p=>{
+    const L = guaLines(p.id);
+    p.edges.forEach(e=>{
+      const i = GUA_SRT_LINE[e.srt];
+      e.style = (i!==undefined && L[i]) ? 'solid' : 'dashed';
+    });
+  });
+}
+/* 某件所在的槽位（件在组内唯一） */
+function slotOfPiece(pid){
+  for(const k of ['upper','lower']){
+    const i = state.slots[k].findIndex(s=>Number(s.piece)===Number(pid));
+    if(i>=0) return {frame:k, slot:i};
+  }
+  return null;
+}
+/* 当前选中的槽位（件/边选中时按所在槽位换算）→ {frame, slot} */
+function selSlotOf(){
+  const s = ui.sel;
+  if(!s) return null;
+  if(s.kind==='slot') return {frame:s.frame, slot:Number(s.slot)};
+  if(s.kind==='piece' || s.kind==='edge') return slotOfPiece(s.piece);
+  return null;
+}
 function edgeIdxOf(a,b){ return EDGE_DEFS.findIndex(e=>(e[0]===a&&e[1]===b)||(e[0]===b&&e[1]===a)); }
 function saveState(){
   state.savedAt = new Date().toISOString();
@@ -534,6 +618,7 @@ function normalize(s){
       if(typeof g.seq==='number' && g.seq>=0 && g.seq<6) out.groups[k].seq = Math.floor(g.seq);
     });
   }
+  applyGuaStyles(out.pieces);   /* 线型由卦象三爻决定 */
   return out;
 }
 
@@ -589,40 +674,52 @@ function bigEdgeStatus(key, a, b, override){
   const sa = o.slotIdx!==undefined ? o.slotIdx : a;
   const ea = edgeColorFromSlot(key, sa, b, o.slotIdx!==undefined ? o.variant : undefined);
   const eb = edgeColorFromSlot(key, b, a);
-  if(!ea || !eb) return {conflict:false, missing:true, color:null, styleMismatch:false};
+  if(!ea || !eb) return {conflict:false, missing:true, color:null};
   const conflict = ea.srt !== eb.srt;
-  const styleMismatch = ea.style !== eb.style;
-  return {conflict, styleMismatch, color: ea.srt, style: ea.style, a:ea, b:eb};
+  /* 线型不参与一致性判断：允许大边两端虚实交错 */
+  return {conflict, color: ea.srt, a:ea, b:eb};
 }
-/* 某插槽用某摆法时，与其它槽位的冲突数 */
+/* 某插槽用某摆法时：与邻槽的颜色冲突数 + 虚实交错的边数 */
 function variantConflicts(key, slotIdx, variantIdx){
-  let c=0, s=0;
+  let c=0, mix=0;
   NEIGHBORS[slotIdx].forEach(t=>{
     const st = bigEdgeStatus(key, slotIdx, t, {slotIdx, variant:variantIdx});
     if(st.conflict) c++;
-    else if(st.styleMismatch) s++;
+    else if(st.a && st.b && st.a.style !== st.b.style) mix++;   /* 同色但一实一虚 */
   });
-  return {color:c, style:s};
+  return {color:c, mix};
 }
-/* 贪心对齐：为某槽位挑一个与邻槽最不冲突的摆法 */
+/* 贪心对齐：优先消色冲突，其次让大边两端虚实交错 */
 function bestVariant(key, slotIdx){
   let best=state.slots[key][slotIdx].variant, bestScore=Infinity;
   for(let v=0;v<6;v++){
     const c=variantConflicts(key, slotIdx, v);
-    const score=c.color*10+c.style;
+    const score=c.color*10 - c.mix;
     if(score<bestScore){ bestScore=score; best=v; }
   }
   return {variant:best, score:bestScore};
 }
+/* 对齐：穷举整组 6^4 种摆法组合 —— 先消颜色冲突，再让大边两端虚实尽量交错 */
 function autoAlign(key){
-  for(let iter=0; iter<8; iter++){
-    let changed=false;
-    for(let i=0;i<4;i++){
-      const b=bestVariant(key,i);
-      if(b.variant!==state.slots[key][i].variant){ state.slots[key][i].variant=b.variant; changed=true; }
-    }
-    if(!changed) break;
+  const slots = state.slots[key];
+  const best = slots.map(s=>s.variant);
+  let bestScore = Infinity;
+  const vs = [0,0,0,0];
+  for(vs[0]=0; vs[0]<6; vs[0]++)
+  for(vs[1]=0; vs[1]<6; vs[1]++)
+  for(vs[2]=0; vs[2]<6; vs[2]++)
+  for(vs[3]=0; vs[3]<6; vs[3]++){
+    for(let i=0;i<4;i++) slots[i].variant = vs[i];
+    let conf=0, mix=0;
+    BIG_EDGES.forEach(([a,b])=>{
+      const st = bigEdgeStatus(key, a, b);
+      if(st.conflict) conf++;
+      else if(st.a && st.b && st.a.style !== st.b.style) mix++;
+    });
+    const score = conf*100 - mix;
+    if(score < bestScore){ bestScore = score; for(let i=0;i<4;i++) best[i]=vs[i]; }
   }
+  for(let i=0;i<4;i++) slots[i].variant = best[i];
 }
 
 /* ============================================================
@@ -662,12 +759,30 @@ function fitProjector(camObj,W,H,pts){
 /* ============================================================
    4. 主视图渲染
    ============================================================ */
+/* 相机参数显式化：主视图 HUD 与左侧图例都显示 az / el（度） */
+function camText(c){
+  const D = r=>r*180/Math.PI;
+  return `az ${D(c.az).toFixed(1)}° · el ${D(c.el).toFixed(1)}° · zoom ${c.zoom.toFixed(2)}`;
+}
+function updateCamInfo(){
+  const pal = el('palCamInfo');
+  if(pal) pal.textContent = `图例视角 ${camText(PAL_CAM)}`;
+  const box = el('camInfo');
+  if(!box) return;
+  const same = Math.abs(cam.az-VIEW_CAM.az) < 1e-6 && Math.abs(cam.el-VIEW_CAM.el) < 1e-6;
+  box.innerHTML = `相机 ${camText(cam)}`
+    + (same
+        ? ' · <span style="color:var(--ok)">= 默认视角</span>'
+        : ' · <span style="color:var(--warn)">≠ 默认视角</span>');
+}
 function renderScene(){
+  updateCamInfo();
   const svg = el('view');
   const W = svg.clientWidth || 700, H = svg.clientHeight || 600;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const pr = projector(cam, W, H);
   const items = [];      /* 可排序的线段 */
+  const pieceHits = [];  /* 件级点击区（面），按深度排序后铺在线之上、hit 线之下 */
   let back = '';         /* 背景层 */
   let front = '';        /* 顶层标记（插槽角点） */
 
@@ -709,12 +824,23 @@ function renderScene(){
       if(!piece) continue;
       const pts = piecePoints(key, i, effVariant(key, slot.variant));
       const PP = pts.map(pr);
+      /* 选中态：件被选中，或它所在的槽位被选中 */
+      const isSelSlotHere = ui.sel && ui.sel.kind==='slot' && ui.sel.frame===key && ui.sel.slot===i;
+      const isSelP = isSelSlotHere || (ui.sel && ui.sel.kind==='piece' && ui.sel.piece===piece.id);
+      const faceSvg = FACES.map(f=>{
+        const t=[PP[f[0]],PP[f[1]],PP[f[2]]];
+        return `<polygon data-kind="piece" data-piece="${piece.id}" data-frame="${key}" data-slot="${i}"
+          points="${t.map(q=>`${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(' ')}"
+          fill="${isSelP?'rgba(138,180,248,.14)':'rgba(0,0,0,0)'}"
+          style="pointer-events:fill;cursor:pointer"/>`;
+      }).join('');
+      pieceHits.push({d:(PP[0].d+PP[1].d+PP[2].d+PP[3].d)/4, svg:faceSvg});
       for(let e=0;e<6;e++){
         const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
         const p1=PP[a], p2=PP[b];
         const st = piece.edges[e];
         const isSelEdge = ui.sel && ui.sel.kind==='edge' && ui.sel.piece===piece.id && ui.sel.edge===e;
-        const isSelPiece = ui.sel && ui.sel.kind==='piece' && ui.sel.piece===piece.id;
+        const isSelPiece = isSelP;
         const color = srtColor(st.srt);
         const dash = st.style==='dashed' ? 'stroke-dasharray="7 5"' : '';
         const w = isSelEdge?3.4:(isSelPiece?2.6:2.0);
@@ -739,10 +865,9 @@ function renderScene(){
         <circle data-kind="slot" data-frame="${key}" data-slot="${i}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9"
           fill="transparent" stroke="${isSel?'#8ab4f8':'rgba(138,180,248,.45)'}" stroke-width="${isSel?2:1}"
           style="pointer-events:all;cursor:pointer"/>
-        <text x="${(p.x+11).toFixed(1)}" y="${(p.y-6).toFixed(1)}" font-size="11" fill="rgba(200,210,240,.8)"
-          style="pointer-events:none">${key==='upper'?'上':'下'}${SLOT_NAMES[key][i]}${piece?'':'·空'}</text>
-        ${piece?`<text x="${(p.x+11).toFixed(1)}" y="${(p.y+7).toFixed(1)}" font-size="10" fill="rgba(255,255,255,.55)"
-          style="pointer-events:none">#${piece.id}</text>`:''}
+        <title>${key==='upper'?'上':'下'}${SLOT_SUB[key][i]}${piece?' · '+pieceName(piece.id):' · 空'}</title>
+        ${piece?`<text x="${(p.x+12).toFixed(1)}" y="${(p.y+4).toFixed(1)}" font-size="10.5"
+          fill="rgba(226,232,248,.78)" style="pointer-events:none">${pieceName(piece.id)}</text>`:''}
       </g>`;
     }
 
@@ -754,44 +879,47 @@ function renderScene(){
   });
 
   items.sort((p,q)=>q.d-p.d);   /* 远 -> 近 */
+  pieceHits.sort((p,q)=>q.d-p.d);
   const hitLayer = items.map(i=>i.hit||'').join('');
-  svg.innerHTML = back + items.map(i=>i.svg).join('') + hitLayer + front;
+  svg.innerHTML = back + items.map(i=>i.svg).join('') + pieceHits.map(i=>i.svg).join('') + hitLayer + front;
 }
 
 /* ============================================================
    5. 小四面体调色板（两组独立摆放）
    ============================================================ */
-const PAL_CAM = {az:-0.7, el:0.45, zoom:1, panX:0, panY:0};
+const PAL_CAM = {az:-0.7, el:0.45, zoom:1, panX:0, panY:0};   /* 图例视角：az -40.1° / el 25.8° */
 function renderPalette(){
+  const W=46, H=42;
+  const PP = fitProjector(PAL_CAM, W, H, CANON);
   ['upper','lower'].forEach(key=>{
     const host = el(key==='upper'?'grpUpper':'grpLower');
     let html='';
     state.pieces.filter(p=>p.group===key).forEach(p=>{
-      const W=112,H=96;
-      const PP = fitProjector(PAL_CAM,W,H,CANON);
-      const pos = [0,1,2,3];   /* 调色板是图例：固定标准姿态，边序不随组模式/槽位 shift 变化 */
-      let body='';
-      for(let e=0;e<6;e++){
-        const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
-        const p1=PP[pos[a]],p2=PP[pos[b]];
-        const st=p.edges[e];
-        const isSel = ui.sel && ui.sel.piece===p.id && (ui.sel.kind==='edge' ? ui.sel.edge===e : true);
-        const color=srtColor(st.srt);
-        const dash=st.style==='dashed'?'stroke-dasharray="6 4"':'';
-        if(isSel) body+=`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#fff" stroke-width="6" opacity=".4" stroke-linecap="round"/>`;
-        body+=`<line data-kind="edge" data-piece="${p.id}" data-edge="${e}" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}"
-          stroke="${color}" stroke-width="${isSel?3.2:2.1}" ${dash} stroke-linecap="round" style="pointer-events:stroke;cursor:pointer"/>`;
-      }
+      /* 每件一行：横排 6 种摆法，拖哪个用哪个（件+摆法一起放） */
+      let cells='';
+      VARIANTS.forEach((v,vi)=>{
+        const pm = [0, v.perm[0]+1, v.perm[1]+1, v.perm[2]+1];   /* 底顶点 p 画在 perm 指定位 */
+        let body='';
+        for(let e=0;e<6;e++){
+          const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
+          const p1=PP[pm[a]], p2=PP[pm[b]];
+          const st=p.edges[e];
+          const dash=st.style==='dashed'?'stroke-dasharray="4 3"':'';
+          body+=`<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}"
+            stroke="${srtColor(st.srt)}" stroke-width="1.7" ${dash} stroke-linecap="round"/>`;
+        }
+        cells += `<div class="vcell" data-piece="${p.id}" data-var="${vi}"
+          title="${v.id} ${v.desc} · 拖到槽位">${`<svg viewBox="0 0 ${W} ${H}">${body}</svg>`}</div>`;
+      });
       const bad = faceViolations(p).length;
-      const used = slotsUsing(p.id);
       html += `<div class="piece ${ui.sel&&ui.sel.piece===p.id?'sel':''}" data-piece="${p.id}">
-        <svg viewBox="0 0 ${W} ${H}" width="100%">${body}</svg>
-        <div class="cap"><b>#${p.id}</b>
-          ${used?`<span class="tag use">${used}</span>`:''}
-          <span class="tag ${bad?'bad':'ok'}">${bad?'SRT△'+bad:'合规则'}</span>
-        </div></div>`;
+        <div class="cap"><b>${pieceName(p.id)}</b>
+          ${bad?`<span class="tag bad">SRT△${bad}</span>`:''}
+        </div>
+        <div class="vgrid6">${cells}</div>
+      </div>`;
     });
-    host.innerHTML=html;
+    if(host) host.innerHTML=html;   /* 左栏已移除：仅更新顶栏组按钮 */
     const fb = el(key==='upper' ? 'flipUpper' : 'flipLower');
     if(fb){
       const m = groupMode(key);
@@ -802,18 +930,11 @@ function renderPalette(){
     const sb = el(key==='upper' ? 'seqUpper' : 'seqLower');
     if(sb){
       const q = groupSeq(key);
-      sb.textContent = 'S'+q;
+      sb.textContent = 'Shift 槽位 '+q;
       sb.classList.toggle('on', q!==0);
-      sb.title = `槽位序列 shift ${q} · 点击轮换四个槽位的内容（顶点槽固定）`;
+      sb.title = `Shift 槽位 ${q} · 点击轮换四个槽位的内容（顶点槽固定）`;
     }
   });
-}
-function slotsUsing(pid){
-  const out=[];
-  ['upper','lower'].forEach(k=>{
-    state.slots[k].forEach((s,i)=>{ if(s.piece===Number(pid)) out.push((k==='upper'?'上':'下')+SLOT_NAMES[k][i]); });
-  });
-  return out.join(' ');
 }
 function faceViolations(p){
   const bad=[];
@@ -829,28 +950,30 @@ function faceViolations(p){
 /* ============================================================
    5b. SRT 配色组
    ============================================================ */
+/* 顶栏下拉：选组 + 当前组 S/R/T 取色 */
 function renderPalettes(){
-  const host = el('palBox');
-  if(!host) return;
-  host.innerHTML = state.palettes.map(p=>{
-    const act = p.id===state.paletteId;
-    return `<div class="palrow ${act?'on':''}" data-palsel="${p.id}">
-      <div class="palname"><input type="text" value="${p.name.replace(/"/g,'&quot;')}" data-palname="${p.id}" spellcheck="false"></div>
-      <div class="palsw">
-        ${SRT_ORDER.map(k=>`<label title="${k} ${SRT[k].cn}">
-          <input type="color" data-pal="${p.id}" data-code="${k}" value="${p.colors[k]}"><span>${k}</span></label>`).join('')}
-      </div>
-    </div>`;
-  }).join('');
-  el('palCur').textContent = '当前：'+(activePalette()?activePalette().name:'');
+  const sel = el('palSelect');
+  if(sel){
+    sel.innerHTML = state.palettes.map(p=>{
+      const nm = String(p.name).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      return `<option value="${p.id}" ${p.id===state.paletteId?'selected':''}>${nm}</option>`;
+    }).join('');
+    sel.value = state.paletteId;
+  }
+  syncPaletteSwatches();
+}
+function syncPaletteSwatches(){
+  SRT_ORDER.forEach(k=>{
+    const inp = el('palColor'+k);
+    if(inp) inp.value = srtColor(k);
+  });
 }
 function setActivePalette(id){
   if(!state.palettes.some(p=>p.id===id)) return;
   state.paletteId = id;
   applyPaletteVars();
-  /* 只切换高亮，不重建列表（避免打断正在编辑的组名/取色器） */
-  document.querySelectorAll('#palBox .palrow').forEach(r=>r.classList.toggle('on', r.dataset.palsel===id));
-  const cur = el('palCur'); if(cur) cur.textContent = '当前：'+(activePalette()?activePalette().name:'');
+  const sel = el('palSelect'); if(sel) sel.value = id;
+  syncPaletteSwatches();
   renderScene(); renderPalette(); renderGrid(); renderSel();
   saveState();
 }
@@ -861,19 +984,20 @@ function setActivePalette(id){
 function renderGrid(){
   const key = ui.tab;
   const grp = key==='upper'?[1,2,3,4]:[5,6,7,8];
+  const hiAt = selSlotOf();
   let html = `<table class="grid"><tbody>`;
   for(let i=0;i<4;i++){
     const slot = state.slots[key][i];
     const piece = pieceById(slot.piece);
     const vc = VARIANTS[slot.variant];
-    html += `<tr data-row="${i}">
+    const isHi = !!(hiAt && hiAt.frame===key && hiAt.slot===i);   /* 只点亮所选槽位 */
+    html += `<tr data-row="${i}" class="${isHi?'hi':''}">
       <td class="c-slot">
-        <span class="slotname">${SLOT_NAMES[key][i]}</span>
-        <span class="slotsub">${SLOT_SUB[key][i]}</span>
+        <span class="slotname">${SLOT_SUB[key][i]}</span>
       </td>
       <td class="c-piece">
-        <select class="psel" data-slot="${i}">
-          ${grp.map(g=>`<option value="${g}" ${g===slot.piece?'selected':''}>#${g}</option>`).join('')}
+        <select class="psel" data-slot="${i}" data-frame="${key}">
+          ${grp.map(g=>`<option value="${g}" ${g===slot.piece?'selected':''}>${pieceName(g)}</option>`).join('')}
         </select>
         <span class="puse">${vc.id} · ${vc.desc}</span>
         <button class="mini" data-act="align" data-frame="${key}" data-slot="${i}">对齐</button>
@@ -930,9 +1054,9 @@ function updatePreviews(){
             stroke="${srtColor(st.srt)}" stroke-width="1.8" ${st.style==='dashed'?'stroke-dasharray="4 3"':''} stroke-linecap="round"/>`;
         }
       }
-      const dotCol = bad? '#ff6b6b' : (cf.style? '#ffc857' : '#5fd38a');
+      const dotCol = bad? '#ff6b6b' : '#5fd38a';
       html += `<div class="var ${vi===slot.variant?'on':''} ${bad?'bad':''}" data-slot="${i}" data-var="${vi}"
-        title="${v.id} ${v.desc}${bad?' · 与邻槽同边颜色冲突':(cf.style?' · 线型不一致':' · 有效')}">
+        title="${v.id} ${v.desc}${bad?' · 与邻槽同边颜色冲突':' · 有效'}">
         <em>${v.id}</em><span class="dot" style="background:${dotCol}"></span>
         <svg viewBox="0 0 ${W} ${H}">${g}</svg></div>`;
     });
@@ -947,7 +1071,6 @@ function updatePreviews(){
     const fv = piece?faceViolations(piece).length:0;
     cell.innerHTML =
       (cf.color? `<span class="badge bad">色冲突${cf.color}</span>` : `<span class="badge ok">色一致</span>`) +
-      (cf.style? `<br><span class="badge warn">线型差</span>`:'') +
       (fv? `<br><span class="badge warn">SRT△${fv}</span>`:'');
   }
 }
@@ -955,39 +1078,80 @@ function updatePreviews(){
 /* ============================================================
    7. 选中对象 / 边编辑
    ============================================================ */
+/* 统一的选择处理：SVG 内的边 / 角点 / 件。
+   注：#view 上用了 setPointerCapture，click 的 target 会变成 <svg>，
+   所以真实点击走 pointerup 里记录的 pointerdown 目标，这里只做落地。 */
+let lastPickAt = 0;
+function pickElement(node){
+  if(!node || !node.dataset) return false;
+  const kind = node.dataset.kind;
+  if(kind==='edge' || kind==='piece'){
+    /* 主画面点击一律落到槽位（不选边、不选件） */
+    const frame = node.dataset.frame, slot = node.dataset.slot;
+    if(frame && slot!==undefined && slot!==''){
+      ui.sel = {kind:'slot', frame, slot:Number(slot)};
+      if(ui.tab!==frame){
+        ui.tab = frame;
+        document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
+      }
+    }else{
+      const pid = Number(node.dataset.piece);
+      ui.sel = {kind:'piece', piece:pid};
+      const pc = pieceById(pid);
+      if(pc && ui.tab!==pc.group){
+        ui.tab = pc.group;
+        document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
+      }
+    }
+  }else if(kind==='slot'){
+    ui.sel = {kind:'slot', frame:node.dataset.frame, slot:Number(node.dataset.slot)};
+    ui.tab = node.dataset.frame;
+    document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
+  }else{
+    return false;
+  }
+  lastPickAt = Date.now();
+  renderScene(); renderPalette(); renderGrid(); renderSel();
+  return true;
+}
 function renderSel(){
   const box = el('selBox');
+  if(!box) return;               /* 选中对象面板已移除：选中状态仍用于主图/Grid 高亮 */
   const s = ui.sel;
-  /* 线型控件：同一小四面体内，同 S/R/T 的两条边虚实一致 → 按颜色一次设置 */
-  const styleSegFor = piece => SRT_ORDER.map(k=>{
-    const first = piece.edges.find(e=>e.srt===k);
-    const dsh = first && first.style==='dashed';
-    return `<button class="srtline srt-${k} ${dsh?'on':''}" data-act="style" data-piece="${piece.id}" data-srt="${k}"
-      title="${k}：该件所有 ${k} 色边一起切换虚实">${k}<span class="st">${dsh?'虚':'实'}</span></button>`;
-  }).join('');
+  /* 线型只读：由卦象三爻决定（三爻=S 二爻=R 初爻=T，阳实阴虚） */
+  const LINE_CN = ['初','二','三'];
+  const linesOf = piece => {
+    const L = guaLines(piece.id);
+    return SRT_ORDER.map(k=>{
+      const li = GUA_SRT_LINE[k];
+      const dsh = !L[li];
+      return `<span class="badge" title="${LINE_CN[li]}爻${L[li]?'阳':'阴'}">${k}${dsh?'虚':'实'}` +
+        `<i style="font-style:normal;opacity:.5;margin-left:3px">${LINE_CN[li]}爻</i></span>`;
+    }).join(' ');
+  };
   if(!s){
-    box.innerHTML = `<div class="kv">未选中。<br>· 点击画面中的<b>彩色边</b> → 设置 SRT 与虚实线<br>
-      · 点击<b>角点</b> → 选中插槽<br>· 左侧调色板可直接编辑每条边</div>`;
+    box.innerHTML = `<div class="kv">未选中。<br>· 点画面中的<b>彩色边</b> → 设置 SRT 颜色<br>
+      · 点<b>角点</b> → 选中槽位<br>· 从左侧元件库拖摆法到角点 → 放置</div>`;
     return;
   }
   if(s.kind==='slot'){
     const key=s.frame, i=s.slot, slot=state.slots[key][i], piece=pieceById(slot.piece);
     const grp = key==='upper'?[1,2,3,4]:[5,6,7,8];
     box.innerHTML = `
-      <div class="row"><span class="lb">插槽</span><b>${key==='upper'?'上':'下'}${SLOT_NAMES[key][i]}</b>
+      <div class="row"><span class="lb">插槽</span><b>${key==='upper'?'上':'下'}组</b>
         <span class="badge">${SLOT_SUB[key][i]}</span></div>
       <div class="row"><span class="lb">小四面体</span>
-        <select class="psel" data-slot="${i}" style="width:88px">
-          ${grp.map(g=>`<option value="${g}" ${g===slot.piece?'selected':''}>#${g}</option>`).join('')}
+        <select class="psel" data-slot="${i}" data-frame="${key}" style="width:96px">
+          ${grp.map(g=>`<option value="${g}" ${g===slot.piece?'selected':''}>${pieceName(g)}</option>`).join('')}
         </select></div>
       <div class="row"><span class="lb">摆法</span>
         <span class="badge">${VARIANTS[slot.variant].id}</span>
         <span class="badge">${VARIANTS[slot.variant].desc}</span></div>
       <div class="row"><span class="lb">状态</span>${slotStatusHTML(key,i)}</div>
-      ${piece?`<div class="row"><span class="lb">6 条边</span><span class="kv">#${piece.id} · ${
+      ${piece?`<div class="row"><span class="lb">6 条边</span><span class="kv">${pieceName(piece.id)} · ${
         faceViolations(piece).length? 'SRT△ 规则未过':'SRT△ 规则通过'}</span></div>`:''}
-      ${piece?`<div class="row"><span class="lb">线型</span><div class="seg">${styleSegFor(piece)}</div></div>`:''}
-      <div class="kv" style="margin-top:4px">同一 S / R / T 的两条边虚实一致，点一次一起变。</div>
+      ${piece?`<div class="row"><span class="lb">线型</span>${linesOf(piece)}</div>`:''}
+      <div class="kv" style="margin-top:4px">线型由卦象三爻决定（三爻=S 二爻=R 初爻=T，阳实阴虚）。</div>
       <div class="row"><button data-act="std" data-piece="${slot.piece}">该件标准三色</button></div>`;
     return;
   }
@@ -999,28 +1163,26 @@ function renderSel(){
     return `<div class="echip ${s.kind==='edge'&&s.edge===i?'sel':''}" data-kind="edge" data-piece="${p.id}" data-edge="${i}">
       <span class="el">${EDGE_LABEL[i]}</span>
       <span class="ec" style="background:${srtColor(st.srt)}"></span>
-      <button class="dsh ${dsh?'on':''}" data-act="style" data-piece="${p.id}" data-srt="${st.srt}"
-        title="该件所有 ${st.srt} 色边一起切换虚实">${dsh?'虚':'实'}</button>
+      <span class="dsh ${dsh?'on':''}" title="${st.srt} 色线型由卦象爻位决定">${dsh?'虚':'实'}</span>
     </div>`;
   }).join('');
   const cur = s.kind==='edge'? p.edges[s.edge] : null;
   box.innerHTML = `
-    <div class="row"><span class="lb">小四面体</span><b>#${p.id}</b>
+    <div class="row"><span class="lb">小四面体</span><b>${pieceName(p.id)}</b>
       <span class="badge">${p.group==='upper'?'上组':'下组'}</span>
       <span class="badge ${faceViolations(p).length?'bad':'ok'}">${faceViolations(p).length? 'SRT△×'+faceViolations(p).length : 'SRT△ 合规'}</span></div>
     ${cur?`<div class="row"><span class="lb">边</span><b>${EDGE_LABEL[s.edge]}</b>
       <div class="seg">
         ${SRT_ORDER.map(k=>`<button class="srt-${k} ${cur.srt===k?'on':''}" data-act="srt" data-piece="${p.id}" data-edge="${s.edge}" data-srt="${k}">${k}</button>`).join('')}
       </div></div>`:''}
-    <div class="row"><span class="lb">线型</span><div class="seg">${styleSegFor(p)}</div></div>
-    <div class="kv" style="margin-top:4px">同一 S / R / T 的两条边虚实一致 —— 点一次同色两条边一起变；换色后自动跟随该色线型。</div>
+    <div class="row"><span class="lb">线型</span>${linesOf(p)}</div>
+    <div class="kv" style="margin-top:4px">线型由卦象三爻决定（三爻=S 二爻=R 初爻=T，阳实阴虚），换色后自动跟随。</div>
     <div class="edgegrid">${rows}</div>
     <div class="row"><button data-act="std" data-piece="${p.id}">标准三色（SRT△）</button></div>`;
 }
 function slotStatusHTML(key,i){
   const cf = variantConflicts(key,i,state.slots[key][i].variant);
-  return (cf.color? `<span class="badge bad">色冲突 ${cf.color}</span>`:`<span class="badge ok">色一致</span>`)
-       + (cf.style? ` <span class="badge warn">线型差 ${cf.style}</span>`:'');
+  return (cf.color? `<span class="badge bad">色冲突 ${cf.color}</span>`:`<span class="badge ok">色一致</span>`);
 }
 
 /* ============================================================
@@ -1031,7 +1193,7 @@ function validate(){
   /* ① 面三色 */
   state.pieces.forEach(p=>{
     faceViolations(p).forEach(v=>{
-      rep.items.push({sev:'bad', text:`小四面体 #${p.id} 面(${v.face.join('')}) 三边为 ${v.colors.join('/')}，应 S·R·T 各一次`,
+      rep.items.push({sev:'bad', text:`小四面体 ${pieceName(p.id)} 面(${v.face.join('')}) 三边为 ${v.colors.join('/')}，应 S·R·T 各一次`,
         piece:p.id, edge:v.face});
       rep.nBad++;
     });
@@ -1041,16 +1203,12 @@ function validate(){
     BIG_EDGES.forEach(([a,b])=>{
       const st = bigEdgeStatus(key,a,b);
       if(st.missing){
-        rep.items.push({sev:'warn', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_NAMES[key][a]}${SLOT_NAMES[key][b]}：有槽位未放置小四面体`});
+        rep.items.push({sev:'warn', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_SUB[key][a]}—${SLOT_SUB[key][b]}：有槽位未放置小四面体`});
         rep.nWarn++;
       }else if(st.conflict){
-        rep.items.push({sev:'bad', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_NAMES[key][a]}${SLOT_NAMES[key][b]}：两端颜色冲突 ${st.a.srt} ≠ ${st.b.srt}`,
+        rep.items.push({sev:'bad', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_SUB[key][a]}—${SLOT_SUB[key][b]}：两端颜色冲突 ${st.a.srt} ≠ ${st.b.srt}`,
           frame:key, slot:a});
         rep.nBad++;
-      }else if(st.styleMismatch){
-        rep.items.push({sev:'warn', text:`${key==='upper'?'上':'下'}四面体 边 ${SLOT_NAMES[key][a]}${SLOT_NAMES[key][b]}：两端线型不一致（${st.a.style} / ${st.b.style}）`,
-          frame:key, slot:a});
-        rep.nWarn++;
       }
     });
   });
@@ -1068,7 +1226,7 @@ function renderReport(){
   const r = lastReport;
   sum.textContent = `异常 ${r.nBad} · 提示 ${r.nWarn}`;
   if(!r.items.length){
-    box.innerHTML = `<div class="ritem ok">全部通过：8 个小四面体均满足 SRT△ 规则，大边两端同色同线型。</div>`;
+    box.innerHTML = `<div class="ritem ok">全部通过：8 个小四面体均满足 SRT△ 规则，大边两端同色（线型不校验，允许交错）。</div>`;
     return;
   }
   box.innerHTML = r.items.map((it,i)=>`<div class="ritem ${it.sev}" data-ri="${i}">${it.text}</div>`).join('');
@@ -1078,7 +1236,123 @@ function renderReport(){
    9. 交互
    ============================================================ */
 function el(id){ return document.getElementById(id); }
+
+/* ---------- 拖动放置：左栏元件 / 主图件 → 槽位（同组内交换） ---------- */
+const dnd = {active:false, piece:null, variant:null, ghost:null, hover:null, prevAttr:null};
+function slotLabel(frame, slot){
+  return (frame==='upper'?'上':'下') + SLOT_SUB[frame][slot];
+}
+function nearestSlotAt(x,y){
+  let best=null, bd=48;
+  document.querySelectorAll('#view circle[data-kind=slot]').forEach(c=>{
+    const r=c.getBoundingClientRect();
+    const d=Math.hypot(x-(r.left+r.width/2), y-(r.top+r.height/2));
+    if(d<bd){ bd=d; best=c; }
+  });
+  return best;
+}
+function slotAtPoint(x,y){
+  const e = document.elementFromPoint(x,y);
+  if(e && e.closest){
+    const cir = e.closest('circle[data-kind=slot]');
+    if(cir) return {frame:cir.dataset.frame, slot:Number(cir.dataset.slot), el:cir};
+    const tr = e.closest('#gridBox tr[data-row]');
+    if(tr) return {frame:ui.tab, slot:Number(tr.dataset.row), el:tr};
+  }
+  const near = nearestSlotAt(x,y);
+  return near ? {frame:near.dataset.frame, slot:Number(near.dataset.slot), el:near} : null;
+}
+function restoreHover(){
+  const e = dnd.hover;
+  if(e){
+    if(e.tagName==='circle' && dnd.prevAttr){
+      e.setAttribute('stroke', dnd.prevAttr.stroke);
+      e.setAttribute('stroke-width', dnd.prevAttr.sw);
+    }else{
+      e.classList.remove('drop-hover');
+    }
+  }
+  dnd.hover = null; dnd.prevAttr = null;
+}
+function hoverTarget(t){
+  const e = t ? t.el : null;
+  if(dnd.hover === e) return;
+  restoreHover();
+  if(!e) return;
+  dnd.hover = e;
+  if(e.tagName==='circle'){
+    dnd.prevAttr = {stroke:e.getAttribute('stroke'), sw:e.getAttribute('stroke-width')};
+    e.setAttribute('stroke', '#5fd38a');
+    e.setAttribute('stroke-width', '3');
+  }else{
+    e.classList.add('drop-hover');
+  }
+}
+function dndStart(pieceId, variant, x, y){
+  const pc = pieceById(pieceId);
+  if(!pc || dnd.active) return;
+  dnd.active = true; dnd.piece = pc.id;
+  dnd.variant = (variant===undefined || variant===null) ? null : Number(variant);
+  document.body.classList.add('dnd');
+  const g = document.createElement('div');
+  g.id = 'dndGhost';
+  document.body.appendChild(g);
+  dnd.ghost = g;
+  dndMove(x, y);
+}
+function dndMove(x,y){
+  if(!dnd.active) return;
+  const pc = pieceById(dnd.piece);
+  const t = slotAtPoint(x,y);
+  const ok = !!(t && pc && pc.group===t.frame);
+  hoverTarget(ok ? t : null);
+  if(dnd.ghost){
+    dnd.ghost.style.left = (x+14)+'px';
+    dnd.ghost.style.top  = (y+12)+'px';
+    const vTxt = (dnd.variant!==null) ? ' · '+VARIANTS[dnd.variant].id : '';
+    dnd.ghost.textContent = pc ? `${pieceName(pc.id)}${vTxt} → ${ok ? slotLabel(t.frame,t.slot) : '同组槽位'}` : '';
+    dnd.ghost.classList.toggle('bad', !ok);
+  }
+}
+function dndEnd(x,y,drop){
+  if(!dnd.active) return;
+  const pc = pieceById(dnd.piece);
+  const vi = dnd.variant;
+  const t = drop ? slotAtPoint(x,y) : null;
+  restoreHover();
+  if(dnd.ghost){ dnd.ghost.remove(); dnd.ghost = null; }
+  document.body.classList.remove('dnd');
+  dnd.active = false; dnd.piece = null; dnd.variant = null;
+  if(t && pc && pc.group===t.frame){
+    setSlotPieceVar(t.frame, t.slot, pc.id, vi);   /* 带摆法则指定，否则保留槽位摆法；已占用自动对调 */
+  }
+}
+/* 左栏摆法缩略图：按住拖动 = 放置该件+该摆法；不移动 = 点击选件（沿用原 click） */
+document.addEventListener('pointerdown', e=>{
+  const cell = (e.button===0 && e.target.closest) ? e.target.closest('#left .vcell') : null;
+  if(!cell) return;
+  const pid = Number(cell.dataset.piece), vi = Number(cell.dataset.var);
+  const sx = e.clientX, sy = e.clientY;
+  let started = false;
+  const mv = ev=>{
+    if(!started && Math.hypot(ev.clientX-sx, ev.clientY-sy) > 5){
+      started = true;
+      cell.classList.add('dragging');
+      dndStart(pid, vi, ev.clientX, ev.clientY);
+    }
+    if(started){ dndMove(ev.clientX, ev.clientY); if(ev.cancelable) ev.preventDefault(); }
+  };
+  const up = ev=>{
+    document.removeEventListener('pointermove', mv);
+    document.removeEventListener('pointerup', up);
+    cell.classList.remove('dragging');
+    if(started) dndEnd(ev.clientX, ev.clientY, true);
+  };
+  document.addEventListener('pointermove', mv, {passive:false});
+  document.addEventListener('pointerup', up);
+});
 function commit(reason){
+  applyGuaStyles(state.pieces);   /* 线型由卦象三爻决定（换色后自动跟随） */
   saveState();
   renderScene(); renderPalette(); renderGrid(); renderSel();
   if(reason==='validate') renderReport();
@@ -1106,11 +1380,6 @@ document.addEventListener('click', ev=>{
     commit();
     return;
   }
-  /* 配色组选中（点组名/行空白处；输入框内部不触发） */
-  if(t.tagName!=='INPUT'){
-    const pal = t.closest ? t.closest('[data-palsel]') : null;
-    if(pal){ setActivePalette(pal.dataset.palsel); return; }
-  }
   /* 边属性按钮（须先于 [data-kind]，行内按钮才不会被行的选中逻辑吞掉） */
   const act = t.closest ? t.closest('[data-act]') : null;
   if(act){
@@ -1126,15 +1395,7 @@ document.addEventListener('click', ev=>{
         commit();
       }
     }
-    else if(a==='style'){
-      /* 件内联动：同一小四面体内，同 S/R/T 的边虚实必须一致 → 按色一起切换 */
-      const code = act.dataset.srt;
-      if(p && code && SRT[code]){
-        const next = p.edges.some(e=>e.srt===code && e.style==='dashed') ? 'solid' : 'dashed';
-        p.edges.forEach(e=>{ if(e.srt===code) e.style = next; });
-        commit();
-      }
-    }
+
     else if(a==='std' && p){ STD_EDGES.forEach((e,i)=>{ p.edges[i].srt=e.srt; }); commit(); }
     else if(a==='flip' && p){ p.edges.forEach(e=>{ e.style = e.style==='dashed'?'solid':'dashed'; }); commit(); }
     else if(a==='align'){
@@ -1145,19 +1406,10 @@ document.addEventListener('click', ev=>{
     }
     return;
   }
-  /* 边 / 槽位选择（SVG 内） */
+  /* 边 / 槽位 / 件 选择（SVG 内） */
   const pick = t.closest ? t.closest('[data-kind]') : null;
   if(pick){
-    const kind = pick.dataset.kind;
-    if(kind==='edge'){
-      ui.sel = {kind:'edge', piece:Number(pick.dataset.piece), edge:Number(pick.dataset.edge),
-                frame:pick.dataset.frame||null, slot:pick.dataset.slot!==undefined?Number(pick.dataset.slot):null};
-    }else if(kind==='slot'){
-      ui.sel = {kind:'slot', frame:pick.dataset.frame, slot:Number(pick.dataset.slot)};
-      ui.tab = pick.dataset.frame;
-      document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
-    }
-    renderScene(); renderPalette(); renderGrid(); renderSel();
+    if(Date.now() - lastPickAt > 300) pickElement(pick);   /* 与 pointerup 路径去重 */
     return;
   }
   /* 摆法切换 */
@@ -1169,14 +1421,14 @@ document.addEventListener('click', ev=>{
     commit();
     return;
   }
-  /* 属性表下拉 */
-  const sel = t.closest ? t.closest('select.psel') : null;
-  if(sel){
-    const idx = Number(sel.dataset.slot);
-    state.slots[ui.tab][idx].piece = Number(sel.value);
-    commit();
+  /* 属性 Grid 任意行点击 → 选中该槽位 */
+  const grow = (t.closest && t.tagName!=='SELECT') ? t.closest('#gridBox tr[data-row]') : null;
+  if(grow){
+    ui.sel = {kind:'slot', frame:ui.tab, slot:Number(grow.dataset.row)};
+    renderScene(); renderGrid(); renderSel();
     return;
   }
+
   /* 侧栏页签 */
   const tab = t.closest ? t.closest('[data-tab]') : null;
   if(tab){
@@ -1189,10 +1441,10 @@ document.addEventListener('click', ev=>{
   const vw = t.closest ? t.closest('[data-view]') : null;
   if(vw){
     const v = vw.dataset.view;
-    if(v==='iso'){ cam.az=-0.62; cam.el=0.42; }
+    if(v==='iso'){ cam.az=VIEW_CAM.az; cam.el=VIEW_CAM.el; }
     else if(v==='front'){ cam.az=0; cam.el=0.05; }
     else if(v==='top'){ cam.az=0; cam.el=1.42; }
-    else { cam.az=-0.62; cam.el=0.42; cam.zoom=1; cam.panX=0; cam.panY=0; }
+    else { cam.az=VIEW_CAM.az; cam.el=VIEW_CAM.el; cam.zoom=1; cam.panX=0; cam.panY=0; }
     scheduleRender();
     return;
   }
@@ -1208,41 +1460,46 @@ document.addEventListener('click', ev=>{
     }
     return;
   }
-  /* 调色板整件选中 */
+  /* 左栏元件点击：落到它所在的槽位 */
   const pc = t.closest ? t.closest('.piece') : null;
   if(pc){
-    ui.sel = {kind:'piece', piece:Number(pc.dataset.piece)};
-    renderScene(); renderPalette(); renderSel();
+    const pid = Number(pc.dataset.piece);
+    const at = slotOfPiece(pid);
+    if(at){
+      ui.sel = {kind:'slot', frame:at.frame, slot:at.slot};
+      if(ui.tab!==at.frame){
+        ui.tab = at.frame;
+        document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
+      }
+    }else{
+      ui.sel = {kind:'piece', piece:pid};
+    }
+    renderScene(); renderPalette(); renderGrid(); renderSel();
   }
 });
 
-/* 配色组：改色 / 改名 / 新增 */
-document.addEventListener('input', e=>{
-  const t = e.target;
-  if(!(t.matches && t.matches('input[type=color][data-pal]'))) return;
-  const p = state.palettes.find(x=>x.id===t.dataset.pal);
-  if(!p) return;
-  p.colors[t.dataset.code] = t.value;
-  state.paletteId = p.id;
-  applyPaletteVars();
-  renderScene(); renderPalette(); renderGrid(); renderSel();
-  saveState();
-});
-document.addEventListener('focusin', e=>{
-  const t = e.target;
-  if(!(t.matches && t.matches('input[type=text][data-palname]'))) return;
-  const id = t.dataset.palname;
-  if(state.paletteId!==id) setActivePalette(id);
-});
+/* 槽位下拉（属性 Grid / 选中面板）：换件时同组内自动对调，避免重复占位 */
 document.addEventListener('change', e=>{
   const t = e.target;
-  if(!(t.matches && t.matches('input[type=text][data-palname]'))) return;
-  const p = state.palettes.find(x=>x.id===t.dataset.palname);
-  if(!p) return;
-  p.name = (t.value||'').trim().slice(0,24) || p.name;
-  state.paletteId = p.id;
-  renderPalettes();
-  saveState();
+  if(!(t.matches && t.matches('select.psel'))) return;
+  setSlotPiece(t.dataset.frame || ui.tab, Number(t.dataset.slot), Number(t.value));
+});
+
+/* 配色组：下拉选择 / 取色 / 新增（顶栏） */
+el('palSelect').addEventListener('change', e=>setActivePalette(e.target.value));
+SRT_ORDER.forEach(k=>{
+  const inp = el('palColor'+k);
+  if(!inp) return;
+  inp.addEventListener('input', ()=>{
+    const p = activePalette();
+    if(!p) return;
+    p.colors[k] = inp.value;
+    state.paletteId = p.id;
+    const sel = el('palSelect'); if(sel) sel.value = p.id;
+    applyPaletteVars();
+    renderScene(); renderPalette(); renderGrid(); renderSel();
+    saveState();
+  });
 });
 el('btnAddPal').addEventListener('click', ()=>{
   const base = activePalette();
@@ -1331,29 +1588,64 @@ function syncSliders(){
   el('offD').value = state.frames.lower.axisOffset; el('offDv').textContent = state.frames.lower.axisOffset.toFixed(2);
 }
 
-/* 视图拖拽 */
+/* 视图拖拽：左键按住 = 旋转视角，右键按住 = 平移画面 */
 (function(){
   const svg = el('view');
-  let drag=null;
+  let drag=null, suppressClick=false, downTarget=null;
   svg.addEventListener('pointerdown', e=>{
-    drag = {x:e.clientX, y:e.clientY, az:cam.az, el:cam.el, moved:0};
+    if(drag) return;                       /* 拖动中不切换键的作用，避免跳变 */
+    if(e.button!==0 && e.button!==2) return;
+    downTarget = e.target;                 /* 记录真实命中元素（capture 会改掉 click 的 target） */
+    /* 起点决定语义：按在件面或该件的边上 = 拖件；按在空白 = 旋转视角；右键 = 平移 */
+    const pieceEl = (e.button===0 && e.target.closest)
+      ? (e.target.closest('polygon[data-kind=piece]') || e.target.closest('#view line[data-kind=edge]'))
+      : null;
+    const mode = e.button===2 ? 'pan' : (pieceEl ? 'piece' : 'rotate');
+    drag = {x:e.clientX, y:e.clientY, az:cam.az, el:cam.el,
+            panX:cam.panX, panY:cam.panY, moved:0, mode,
+            piece: pieceEl ? Number(pieceEl.dataset.piece) : null};
     svg.classList.add('drag');
+    svg.classList.toggle('pan', mode==='pan');
     svg.setPointerCapture(e.pointerId);
   });
   svg.addEventListener('pointermove', e=>{
     if(!drag) return;
     const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
     drag.moved = Math.max(drag.moved, Math.hypot(dx,dy));
-    cam.az = drag.az + dx*0.008;
-    cam.el = Math.max(-1.45, Math.min(1.45, drag.el + dy*0.008));
+    if(drag.mode==='piece'){
+      if(!dnd.active && drag.moved > 5) dndStart(drag.piece, null, e.clientX, e.clientY);
+      else if(dnd.active) dndMove(e.clientX, e.clientY);
+      return;
+    }
+    if(drag.mode==='pan'){
+      cam.panX = drag.panX + dx;
+      cam.panY = drag.panY + dy;
+    }else{
+      cam.az = drag.az + dx*0.008;
+      cam.el = Math.max(-1.45, Math.min(1.45, drag.el + dy*0.008));
+    }
     scheduleRender();
   });
-  const end = e=>{
-    if(drag) svg.classList.remove('drag');
-    drag=null;
+  const end = (e, drop)=>{
+    if(drag){
+      svg.classList.remove('drag');
+      svg.classList.remove('pan');
+      if(drag.mode==='piece'){
+        if(dnd.active) dndEnd(e.clientX, e.clientY, drop);
+        else pickElement(downTarget);      /* 没拖动 = 点击选中该件 */
+      }else if(drag.mode==='rotate'){
+        if(drag.moved > 5) suppressClick = true;
+        else pickElement(downTarget);      /* 未拖动 = 点击：用手上记录的目标选中 */
+      }
+    }
+    drag=null; downTarget=null;
   };
-  svg.addEventListener('pointerup', end);
-  svg.addEventListener('pointercancel', end);
+  svg.addEventListener('pointerup', e=>end(e, true));
+  svg.addEventListener('pointercancel', e=>end(e, false));
+  svg.addEventListener('contextmenu', e=>e.preventDefault());   /* 右键留给平移 */
+  svg.addEventListener('click', e=>{
+    if(suppressClick){ suppressClick=false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
   svg.addEventListener('wheel', e=>{
     e.preventDefault();
     cam.zoom = Math.max(0.35, Math.min(3, cam.zoom * (1 - e.deltaY*0.0012)));
@@ -1378,6 +1670,7 @@ window.addEventListener('resize', ()=>scheduleRender());
    ============================================================ */
 (function init(){
   const had = loadState();
+  applyGuaStyles(state.pieces);   /* 线型由卦象三爻决定 */
   syncSliders();
   applyPaletteVars();
   renderScene(); renderPalette(); renderPalettes(); renderGrid(); renderSel(); renderReport();
