@@ -202,11 +202,11 @@
         <button id="btnAddPal" style="width:100%;margin-top:6px">新增配色组</button>
       </div>
       <div class="sect">
-        <h4>上组 · 1 – 4<button class="flipbtn" id="flipUpper" data-mode="upper" title="切换组模式（shift 0-5）">R0</button></h4>
+        <h4>上组 · 1 – 4<span style="display:flex;gap:4px"><button class="flipbtn" id="seqUpper" data-seq="upper" title="槽位序列 shift（S0-S5）：四个槽位的内容（件+摆法）轮换，顶点槽固定">S0</button><button class="flipbtn" id="flipUpper" data-mode="upper" title="切换组模式（shift 0-5）">R0</button></span></h4>
         <div class="pieces" id="grpUpper"></div>
       </div>
       <div class="sect">
-        <h4>下组 · 5 – 8<button class="flipbtn" id="flipLower" data-mode="lower" title="切换组模式（shift 0-5）">R0</button></h4>
+        <h4>下组 · 5 – 8<span style="display:flex;gap:4px"><button class="flipbtn" id="seqLower" data-seq="lower" title="槽位序列 shift（S0-S5）：四个槽位的内容（件+摆法）轮换，顶点槽固定">S0</button><button class="flipbtn" id="flipLower" data-mode="lower" title="切换组模式（shift 0-5）">R0</button></span></h4>
         <div class="pieces" id="grpLower"></div>
       </div>
       <div class="sect">
@@ -218,6 +218,7 @@
             小四面体 6 条边各带一个 <b>SRT</b>（S 悦性 / R 变性 / T 惰性）与 <b>实线 / 虚线</b>；同一小四面体内，<b>同色（S、R 或 T）的两条边虚实一致</b>，按色一次设置。<br>
             每个插槽有 <b>6 种摆法</b>（绕轴 120°×3 旋转 ×2 镜像）；与大四面体另一端的同一条边颜色冲突者标为无效（虚线框）。<br>
             校验：① 每小四面体每个面三边恰为 S/R/T 各一次；② 每条大边两端同色同线型。<br>
+            <b>分组整体 shift</b>：① 组模式 R0–R5 = 每件摆法的组级偏移；② 槽位序列 S0–S5 = 四个槽位的内容（件+摆法）按同构的六种置换轮换（顶点槽固定）。<br>
             <b>SRT 配色组</b>可增删改，当前所用组与全部组定义都会写入导出的 JSON。
           </p>
         </details>
@@ -312,6 +313,26 @@ const MODE_SIGMA = [
   [3,2,1],   /* shift 4 · 镜像 + 旋转 120° */
   [2,1,3]    /* shift 5 · 镜像 + 旋转 240° */
 ];
+/* 槽位序列 shift：与摆法同构的 6 种置换（顶点槽固定，底三槽循环/镜像）
+   SEQ_SIGMA[g][i] = 档位 g 时槽 i 的内容取自基准槽 SEQ_SIGMA[g][i] */
+const SEQ_SIGMA = [
+  [0,1,2,3],   /* S0 · 不动 */
+  [0,3,1,2],   /* S1 · 底三槽循环 */
+  [0,2,3,1],   /* S2 · 底三槽循环×2 */
+  [0,1,3,2],   /* S3 · 镜像（底1/2 对调） */
+  [0,3,2,1],   /* S4 · 镜像变体 */
+  [0,2,1,3]    /* S5 · 镜像变体 */
+];
+/* 相邻档位差分：从档 g 步进到档 g+1 时作用在当前内容上的 src 表 */
+const SEQ_STEP = (()=>{
+  const steps=[];
+  for(let g=0; g<6; g++){
+    const a=SEQ_SIGMA[g], b=SEQ_SIGMA[(g+1)%6];
+    const inv=[]; a.forEach((v,i)=>{ inv[v]=i; });
+    steps.push(b.map(v=>inv[v]));
+  }
+  return steps;
+})();
 /* 摆法置换 → 序号，便于反查 */
 const VARIANT_INDEX = {};
 VARIANTS.forEach((v,i)=>{ VARIANT_INDEX[v.perm.join('')] = i; });
@@ -324,6 +345,23 @@ function composeShift(perm, sigma){
 function groupMode(key){
   const g = state.groups && state.groups[key];
   return (g && typeof g.mode==='number' && g.mode>=0 && g.mode<6) ? g.mode : 0;
+}
+/* 槽位序列 shift 档位（S0-S5） */
+function groupSeq(key){
+  const g = state.groups && state.groups[key];
+  return (g && typeof g.seq==='number' && g.seq>=0 && g.seq<6) ? g.seq : 0;
+}
+/* 步进槽位序列 shift：把该组 4 个槽位的内容（件+摆法）按下一档差分置换搬运 */
+function stepSlotShift(key){
+  const slots = state.slots[key];
+  const src = SEQ_STEP[groupSeq(key)];
+  const old = slots.map(s=>({piece:s.piece, variant:s.variant}));
+  for(let i=0;i<4;i++){
+    slots[i].piece = old[src[i]].piece;
+    slots[i].variant = old[src[i]].variant;
+  }
+  if(!state.groups[key]) state.groups[key] = {mode:0};
+  state.groups[key].seq = (groupSeq(key)+1)%6;
 }
 /* 有效摆法 = 槽位摆法 经组 shift 后的置换所对应的摆法序号 */
 function effVariant(key, v){
@@ -493,6 +531,7 @@ function normalize(s){
       if(!g) return;
       if(typeof g.mode==='number' && g.mode>=0 && g.mode<6) out.groups[k].mode = Math.floor(g.mode);
       else if(g.flip) out.groups[k].mode = 3;
+      if(typeof g.seq==='number' && g.seq>=0 && g.seq<6) out.groups[k].seq = Math.floor(g.seq);
     });
   }
   return out;
@@ -730,7 +769,7 @@ function renderPalette(){
     state.pieces.filter(p=>p.group===key).forEach(p=>{
       const W=112,H=96;
       const PP = fitProjector(PAL_CAM,W,H,CANON);
-      const pos = modeVertexMap(key);             /* 组模式下的顶点绘制落位 */
+      const pos = [0,1,2,3];   /* 调色板是图例：固定标准姿态，边序不随组模式/槽位 shift 变化 */
       let body='';
       for(let e=0;e<6;e++){
         const a=EDGE_DEFS[e][0], b=EDGE_DEFS[e][1];
@@ -759,6 +798,13 @@ function renderPalette(){
       fb.textContent = VARIANTS[m].id;
       fb.classList.toggle('on', m!==0);
       fb.title = `组模式 shift ${m}（${VARIANTS[m].desc}）· 点击切换`;
+    }
+    const sb = el(key==='upper' ? 'seqUpper' : 'seqLower');
+    if(sb){
+      const q = groupSeq(key);
+      sb.textContent = 'S'+q;
+      sb.classList.toggle('on', q!==0);
+      sb.title = `槽位序列 shift ${q} · 点击轮换四个槽位的内容（顶点槽固定）`;
     }
   });
 }
@@ -1047,6 +1093,16 @@ document.addEventListener('click', ev=>{
     if(!state.groups) state.groups = {upper:{mode:0}, lower:{mode:0}};
     if(!state.groups[key]) state.groups[key] = {mode:0};
     state.groups[key].mode = (groupMode(key) + 1) % 6;
+    commit();
+    return;
+  }
+  /* 槽位序列 shift（S0-S5）：重排该组四个槽位的内容 */
+  const sq = t.closest ? t.closest('[data-seq]') : null;
+  if(sq){
+    const key = sq.dataset.seq;
+    if(!state.groups) state.groups = {upper:{mode:0}, lower:{mode:0}};
+    if(!state.groups[key]) state.groups[key] = {mode:0};
+    stepSlotShift(key);
     commit();
     return;
   }
