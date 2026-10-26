@@ -88,6 +88,9 @@
   .selbox .lb{font-size:10px;color:var(--txt-dim);min-width:52px}
   .seg{display:flex;gap:3px}
   .seg button{padding:3px 8px;font-size:11px}
+  .seg button .st{font-size:9px;opacity:.85;margin-left:3px}
+  .seg button.srtline{font-weight:600}
+  .seg button.srtline.on{box-shadow:0 0 0 1px rgba(255,255,255,.35) inset}
   .seg button.srt-S.on{background:var(--S-soft);border-color:var(--S);color:#fff}
   .seg button.srt-R.on{background:var(--R-soft);border-color:var(--R);color:#fff}
   .seg button.srt-T.on{background:var(--T-soft);border-color:var(--T);color:#fff}
@@ -212,7 +215,7 @@
           <p style="margin:6px 0 0">
             星四面体 = 上下两个大四面体（轴对齐、可绕竖轴旋转、可沿轴上下滑）。<br>
             每个大四面体四角各有一个 <b>3D 插槽</b>，像积木一样放入一个小四面体（1–4 归上组，5–8 归下组）。<br>
-            小四面体 6 条边各带一个 <b>SRT</b>（S 悦性 / R 变性 / T 惰性）与 <b>实线 / 虚线</b>。<br>
+            小四面体 6 条边各带一个 <b>SRT</b>（S 悦性 / R 变性 / T 惰性）与 <b>实线 / 虚线</b>；同一小四面体内，<b>同色（S、R 或 T）的两条边虚实一致</b>，按色一次设置。<br>
             每个插槽有 <b>6 种摆法</b>（绕轴 120°×3 旋转 ×2 镜像）；与大四面体另一端的同一条边颜色冲突者标为无效（虚线框）。<br>
             校验：① 每小四面体每个面三边恰为 S/R/T 各一次；② 每条大边两端同色同线型。<br>
             <b>SRT 配色组</b>可增删改，当前所用组与全部组定义都会写入导出的 JSON。
@@ -225,7 +228,7 @@
       <svg id="view"></svg>
       <div id="legend">
         <div><i style="border-color:var(--S)"></i>S 悦性　<i style="border-color:var(--R)"></i>R 变性　<i style="border-color:var(--T)"></i>T 惰性</div>
-        <div>实线 = 实　虚线 = 虚</div>
+        <div>实线 = 实　虚线 = 虚（同一小四面体内同色边同虚实）</div>
       </div>
       <div id="viewctl">
         <button data-view="iso">斜视</button>
@@ -909,6 +912,13 @@ function updatePreviews(){
 function renderSel(){
   const box = el('selBox');
   const s = ui.sel;
+  /* 线型控件：同一小四面体内，同 S/R/T 的两条边虚实一致 → 按颜色一次设置 */
+  const styleSegFor = piece => SRT_ORDER.map(k=>{
+    const first = piece.edges.find(e=>e.srt===k);
+    const dsh = first && first.style==='dashed';
+    return `<button class="srtline srt-${k} ${dsh?'on':''}" data-act="style" data-piece="${piece.id}" data-srt="${k}"
+      title="${k}：该件所有 ${k} 色边一起切换虚实">${k}<span class="st">${dsh?'虚':'实'}</span></button>`;
+  }).join('');
   if(!s){
     box.innerHTML = `<div class="kv">未选中。<br>· 点击画面中的<b>彩色边</b> → 设置 SRT 与虚实线<br>
       · 点击<b>角点</b> → 选中插槽<br>· 左侧调色板可直接编辑每条边</div>`;
@@ -930,6 +940,8 @@ function renderSel(){
       <div class="row"><span class="lb">状态</span>${slotStatusHTML(key,i)}</div>
       ${piece?`<div class="row"><span class="lb">6 条边</span><span class="kv">#${piece.id} · ${
         faceViolations(piece).length? 'SRT△ 规则未过':'SRT△ 规则通过'}</span></div>`:''}
+      ${piece?`<div class="row"><span class="lb">线型</span><div class="seg">${styleSegFor(piece)}</div></div>`:''}
+      <div class="kv" style="margin-top:4px">同一 S / R / T 的两条边虚实一致，点一次一起变。</div>
       <div class="row"><button data-act="std" data-piece="${slot.piece}">该件标准三色</button></div>`;
     return;
   }
@@ -941,8 +953,8 @@ function renderSel(){
     return `<div class="echip ${s.kind==='edge'&&s.edge===i?'sel':''}" data-kind="edge" data-piece="${p.id}" data-edge="${i}">
       <span class="el">${EDGE_LABEL[i]}</span>
       <span class="ec" style="background:${srtColor(st.srt)}"></span>
-      <button class="dsh ${dsh?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${i}"
-        data-style="${dsh?'solid':'dashed'}" title="切换实线 / 虚线">${dsh?'虚':'实'}</button>
+      <button class="dsh ${dsh?'on':''}" data-act="style" data-piece="${p.id}" data-srt="${st.srt}"
+        title="该件所有 ${st.srt} 色边一起切换虚实">${dsh?'虚':'实'}</button>
     </div>`;
   }).join('');
   const cur = s.kind==='edge'? p.edges[s.edge] : null;
@@ -953,11 +965,9 @@ function renderSel(){
     ${cur?`<div class="row"><span class="lb">边</span><b>${EDGE_LABEL[s.edge]}</b>
       <div class="seg">
         ${SRT_ORDER.map(k=>`<button class="srt-${k} ${cur.srt===k?'on':''}" data-act="srt" data-piece="${p.id}" data-edge="${s.edge}" data-srt="${k}">${k}</button>`).join('')}
-      </div>
-      <div class="seg">
-        <button class="${cur.style==='solid'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="solid">实</button>
-        <button class="${cur.style==='dashed'?'on':''}" data-act="style" data-piece="${p.id}" data-edge="${s.edge}" data-style="dashed">虚</button>
       </div></div>`:''}
+    <div class="row"><span class="lb">线型</span><div class="seg">${styleSegFor(p)}</div></div>
+    <div class="kv" style="margin-top:4px">同一 S / R / T 的两条边虚实一致 —— 点一次同色两条边一起变；换色后自动跟随该色线型。</div>
     <div class="edgegrid">${rows}</div>
     <div class="row"><button data-act="std" data-piece="${p.id}">标准三色（SRT△）</button></div>`;
 }
@@ -1050,8 +1060,25 @@ document.addEventListener('click', ev=>{
   if(act){
     const a = act.dataset.act;
     const p = pieceById(act.dataset.piece);
-    if(a==='srt' && p){ p.edges[Number(act.dataset.edge)].srt = act.dataset.srt; commit(); }
-    else if(a==='style' && p){ p.edges[Number(act.dataset.edge)].style = act.dataset.style; commit(); }
+    if(a==='srt' && p){
+      const e = p.edges[Number(act.dataset.edge)];
+      const code = act.dataset.srt;
+      if(e && SRT[code]){
+        e.srt = code;
+        const twin = p.edges.find(x=>x!==e && x.srt===code);
+        if(twin) e.style = twin.style;   /* 跟随同色边虚实，保持件内一致 */
+        commit();
+      }
+    }
+    else if(a==='style'){
+      /* 件内联动：同一小四面体内，同 S/R/T 的边虚实必须一致 → 按色一起切换 */
+      const code = act.dataset.srt;
+      if(p && code && SRT[code]){
+        const next = p.edges.some(e=>e.srt===code && e.style==='dashed') ? 'solid' : 'dashed';
+        p.edges.forEach(e=>{ if(e.srt===code) e.style = next; });
+        commit();
+      }
+    }
     else if(a==='std' && p){ STD_EDGES.forEach((e,i)=>{ p.edges[i].srt=e.srt; }); commit(); }
     else if(a==='flip' && p){ p.edges.forEach(e=>{ e.style = e.style==='dashed'?'solid':'dashed'; }); commit(); }
     else if(a==='align'){
@@ -1175,12 +1202,17 @@ el('btnAddPal').addEventListener('click', ()=>{
 function bindSlider(id, key, field, fmt){
   const s = el(id);
   const out = el(id+'v');
+  let saveT = null;
   const upd = ()=>{
     state.frames[key][field] = Number(s.value);
     out.textContent = fmt(s.value);
     scheduleRender();
+    /* 拖动停顿 300ms 后落盘，避免高频写 localStorage */
+    clearTimeout(saveT);
+    saveT = setTimeout(saveState, 300);
   };
   s.addEventListener('input', upd);
+  s.addEventListener('change', saveState);   /* 松手立即保存 */
 }
 bindSlider('rotU','upper','rotationDeg', v=>v+'°');
 bindSlider('offU','upper','axisOffset', v=>Number(v).toFixed(2));
