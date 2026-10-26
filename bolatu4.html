@@ -33,20 +33,33 @@
   #layerList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);
     border-radius:3px;}
 
-  .layerCard{background:rgba(255,255,255,.025);
+  /* 卡片 = 左侧「可见」竖栏 + 右侧内容栏 */
+  .layerCard{display:flex;align-items:stretch;background:rgba(255,255,255,.025);
     border:1px solid var(--line);border-radius:8px;
-    padding:8px 10px;margin-bottom:8px;transition:border-color .15s,opacity .15s;}
+    padding:8px 10px 8px 6px;margin-bottom:8px;transition:border-color .15s,opacity .15s;}
   .layerCard:hover{border-color:rgba(255,255,255,.16);}
+  /* 半径不足（不可见）才整体淡化；手动隐藏不变暗，只靠眼睛变色 + 右栏停用 */
   .layerCard.hidden-layer{opacity:0.35;}
-  .layerCard.user-hidden{opacity:0.32;border-style:dashed;}
-  .leye{width:22px;height:18px;border-radius:4px;border:1px solid rgba(255,255,255,.12);
+  .layerCard.user-hidden .lbody{pointer-events:none;}
+  /* 删除按钮保持可用，隐藏的层照样能删 */
+  .layerCard.user-hidden .lhead .ldel{pointer-events:auto;}
+  .lside{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;
+    padding:0 8px 0 2px;margin-right:9px;
+    border-right:1px solid rgba(255,255,255,.07);}
+  .lbody{flex:1 1 auto;min-width:0;}
+  /* 眼睛：放大并独占左栏，卡片再高也只有它在顶部 */
+  .leye{width:30px;height:30px;border-radius:6px;border:1px solid rgba(255,255,255,.12);
     background:rgba(255,255,255,.04);color:var(--dim);cursor:pointer;padding:0;
     display:flex;align-items:center;justify-content:center;flex-shrink:0;
-    margin-right:4px;transition:all .15s;}
-  .leye:hover{background:rgba(138,180,248,.16);color:var(--acc);border-color:rgba(138,180,248,.4);}
-  .leye.on{color:var(--acc);border-color:rgba(138,180,248,.3);}
-  .leye.off{color:var(--faint);}
-  .leye svg{display:block;}
+    transition:all .15s;}
+  .leye.on{color:var(--acc);border-color:rgba(138,180,248,.32);
+    background:rgba(138,180,248,.10);}
+  .leye.off{color:var(--faint);border-color:rgba(255,255,255,.06);
+    background:rgba(255,255,255,.015);}
+  .leye:hover{border-color:rgba(138,180,248,.45);background:rgba(138,180,248,.16);}
+  .leye.on:hover{color:var(--acc);}
+  .leye.off:hover{color:var(--txt);}
+  .leye svg{display:block;width:19px;height:19px;}
   .lhead{display:flex;justify-content:space-between;align-items:center;
     font-size:11px;margin-bottom:6px;gap:4px;}
   .lhead .lname{color:var(--txt);font-weight:600;flex-shrink:0;}
@@ -576,7 +589,7 @@ function eyeIcon(hidden) {
   const slash = hidden
     ? '<path d="M3.5 3.5 L20.5 20.5" stroke="#e08585" stroke-width="2.2"/>'
     : '';
-  return `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M2 12s3.8-6.6 10-6.6S22 12 22 12s-3.8 6.6-10 6.6S2 12 2 12z"/>
     <circle cx="12" cy="12" r="2.8"/>${slash}</svg>`;
@@ -594,22 +607,29 @@ function rebuildPanel() {
     const L = layerDefs[k];
     const r = radii[k];
     const hidden = !!L.hidden;
-    const isVisible = r >= MIN_VISIBLE_R && !hidden;
     const isRoot = (L.relTo === null || L.relTo === undefined || L.relTo < 0);
     const vi = visibleIdx.indexOf(k);
     const auto = (vi >= 0) ? autoOps(vi, nVis) : AUTO_FALLBACK;
 
     let cardCls = 'layerCard';
-    if (!isVisible) cardCls += ' hidden-layer';
+    // 只有几何上不可见（半径太小）才淡化卡片；手动隐藏不弄暗，靠眼睛变色表达
+    if (r < MIN_VISIBLE_R) cardCls += ' hidden-layer';
     if (hidden) cardCls += ' user-hidden';
 
     html += `<div class="${cardCls}" data-idx="${k}">`;
 
+    // —— 左栏：可见性（独占一列，卡片再高也只有它在顶部） ——
+    html += `<div class="lside">`;
+    html += `<button class="leye ${hidden ? 'off' : 'on'}" data-act="vis" data-idx="${k}"
+      title="${hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）'}">${eyeIcon(hidden)}</button>`;
+    html += `</div>`;
+
+    // —— 右栏：名称 / 半径 / 删除 + 类型 + 相对/padding + 面边点 ——
+    html += `<div class="lbody">`;
+
     html += `<div class="lhead">`;
     html += `<span class="lname">层 ${k + 1}${isRoot ? ' · 根' : ''}</span>`;
     html += `<span class="lradius">${hidden ? '已隐藏' : (r >= MIN_VISIBLE_R ? 'r=' + r.toFixed(4) : '不可见')}</span>`;
-    html += `<button class="leye ${hidden ? 'off' : 'on'}" data-act="vis" data-idx="${k}"
-      title="${hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）'}">${eyeIcon(hidden)}</button>`;
     html += layerDefs.length > 1
       ? `<button class="ldel" data-act="del" data-idx="${k}" title="删除该层（会弹出确认框）">×</button>`
       : `<button class="ldel" disabled title="至少保留一层">×</button>`;
@@ -654,7 +674,8 @@ function rebuildPanel() {
     }
     html += `</div>`;
 
-    html += `</div>`;
+    html += `</div>`;   // .lbody
+    html += `</div>`;   // .layerCard
   }
   list.innerHTML = html;
   bindPanelEvents(list);
@@ -810,7 +831,7 @@ function updateRadiusLabels() {
       else el.textContent = '不可见';
     }
     card.classList.toggle('user-hidden', hidden);
-    card.classList.toggle('hidden-layer', !hidden && r < MIN_VISIBLE_R);
+    card.classList.toggle('hidden-layer', r < MIN_VISIBLE_R);
   });
   updateHUD();
 }

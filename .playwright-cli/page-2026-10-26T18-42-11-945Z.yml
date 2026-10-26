@@ -1,0 +1,181 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 柏拉图立体 · 相对内嵌
+    - generic: 4 层 · 可见 4 · 最内 r=0.2649
+    - generic: 右侧编辑每层类型 / 相对 / Padding / 面·边·点透明度点 眼睛 只隐藏该层（opacity 保留）隐藏全部 一键全隐 / 恢复（H 键）删除会弹窗确认拖动旋转 · 滚轮缩放 · 空格切换自转参数自动保存到本地
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: 层栈编辑
+      - generic [ref=e5]: 内/外 26.5%
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - button "隐藏该层（保留面/边/点透明度）" [ref=e9] [cursor=pointer]
+        - generic [ref=e13]:
+          - generic [ref=e14]:
+            - generic [ref=e15]: 层 1 · 根
+            - generic [ref=e16]: r=1.0000
+            - button "×" [ref=e17] [cursor=pointer]
+          - generic [ref=e18]:
+            - button "四面" [ref=e19] [cursor=pointer]
+            - button "立方" [ref=e20] [cursor=pointer]
+            - button "八面" [ref=e21] [cursor=pointer]
+            - button "十二" [ref=e22] [cursor=pointer]
+            - button "二十" [ref=e23] [cursor=pointer]
+            - button "星四" [ref=e24] [cursor=pointer]
+            - button "组装" [ref=e25] [cursor=pointer]
+          - generic [ref=e27]:
+            - generic [ref=e28]: 相对
+            - combobox [ref=e29] [cursor=pointer]:
+              - option "无（根）" [selected]
+              - option "层 2 · 星四"
+              - option "层 3 · 十二"
+              - option "层 4 · 二十"
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - generic [ref=e33]: 面
+              - slider [ref=e34]: "3"
+              - generic [ref=e35]: auto
+              - button "A" [ref=e36] [cursor=pointer]
+            - generic [ref=e37]:
+              - generic [ref=e39]: 边
+              - slider [ref=e40]: "32"
+              - generic [ref=e41]: auto
+              - button "A" [ref=e42] [cursor=pointer]
+            - generic [ref=e43]:
+              - generic [ref=e45]: 点
+              - slider [ref=e46]: "45"
+              - generic [ref=e47]: auto
+              - button "A" [ref=e48] [cursor=pointer]
+      - generic [ref=e49]:
+        - button "隐藏该层（保留面/边/点透明度）" [ref=e51] [cursor=pointer]
+        - generic [ref=e55]:
+          - generic [ref=e56]:
+            - generic [ref=e57]: 层 2
+            - generic [ref=e58]: r=1.0000
+            - button "×" [ref=e59] [cursor=pointer]
+          - generic [ref=e60]:
+            - button "四面" [ref=e61] [cursor=pointer]
+            - button "立方" [ref=e62] [cursor=pointer]
+            - button "八面" [ref=e63] [cursor=pointer]
+            - button "十二" [ref=e64] [cursor=pointer]
+            - button "二十" [ref=e65] [cursor=pointer]
+            - button "星四" [ref=e66] [cursor=pointer]
+            - button "组装" [ref=e67] [cursor=pointer]
+          - generic [ref=e68]:
+            - generic [ref=e69]:
+              - generic [ref=e70]: 相对
+              - combobox [ref=e71] [cursor=pointer]:
+                - option "无（根）"
+                - option "层 1 · 立方" [selected]
+                - option "层 3 · 十二"
+                - option "层 4 · 二十"
+            - generic [ref=e72]:
+              - generic [ref=e73]: padding
+              - slider [ref=e74]: "0"
+              - generic [ref=e75]: 0%
+          - generic [ref=e76]:
+            - generic [ref=e77]:
+              - generic [ref=e79]: 面
+              - slider [ref=e80]: "5"
+              - generic [ref=e81]: auto
+              - button "A" [ref=e82] [cursor=pointer]
+            - generic [ref=e83]:
+              - generic [ref=e85]: 边
+              - slider [ref=e86]: "50"
+              - generic [ref=e87]: auto
+              - button "A" [ref=e88] [cursor=pointer]
+            - generic [ref=e89]:
+              - generic [ref=e91]: 点
+              - slider [ref=e92]: "60"
+              - generic [ref=e93]: auto
+              - button "A" [ref=e94] [cursor=pointer]
+      - generic [ref=e95]:
+        - button "隐藏该层（保留面/边/点透明度）" [ref=e97] [cursor=pointer]
+        - generic [ref=e101]:
+          - generic [ref=e102]:
+            - generic [ref=e103]: 层 3
+            - generic [ref=e104]: r=0.3333
+            - button "×" [ref=e105] [cursor=pointer]
+          - generic [ref=e106]:
+            - button "四面" [ref=e107] [cursor=pointer]
+            - button "立方" [ref=e108] [cursor=pointer]
+            - button "八面" [ref=e109] [cursor=pointer]
+            - button "十二" [ref=e110] [cursor=pointer]
+            - button "二十" [ref=e111] [cursor=pointer]
+            - button "星四" [ref=e112] [cursor=pointer]
+            - button "组装" [ref=e113] [cursor=pointer]
+          - generic [ref=e114]:
+            - generic [ref=e115]:
+              - generic [ref=e116]: 相对
+              - combobox [ref=e117] [cursor=pointer]:
+                - option "无（根）"
+                - option "层 1 · 立方"
+                - option "层 2 · 星四" [selected]
+                - option "层 4 · 二十"
+            - generic [ref=e118]:
+              - generic [ref=e119]: padding
+              - slider [ref=e120]: "0"
+              - generic [ref=e121]: 0%
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - generic [ref=e125]: 面
+              - slider [ref=e126]: "8"
+              - generic [ref=e127]: auto
+              - button "A" [ref=e128] [cursor=pointer]
+            - generic [ref=e129]:
+              - generic [ref=e131]: 边
+              - slider [ref=e132]: "69"
+              - generic [ref=e133]: auto
+              - button "A" [ref=e134] [cursor=pointer]
+            - generic [ref=e135]:
+              - generic [ref=e137]: 点
+              - slider [ref=e138]: "75"
+              - generic [ref=e139]: auto
+              - button "A" [ref=e140] [cursor=pointer]
+      - generic [ref=e141]:
+        - button "隐藏该层（保留面/边/点透明度）" [ref=e143] [cursor=pointer]
+        - generic [ref=e147]:
+          - generic [ref=e148]:
+            - generic [ref=e149]: 层 4
+            - generic [ref=e150]: r=0.2649
+            - button "×" [ref=e151] [cursor=pointer]
+          - generic [ref=e152]:
+            - button "四面" [ref=e153] [cursor=pointer]
+            - button "立方" [ref=e154] [cursor=pointer]
+            - button "八面" [ref=e155] [cursor=pointer]
+            - button "十二" [ref=e156] [cursor=pointer]
+            - button "二十" [ref=e157] [cursor=pointer]
+            - button "星四" [ref=e158] [cursor=pointer]
+            - button "组装" [ref=e159] [cursor=pointer]
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - generic [ref=e162]: 相对
+              - combobox [ref=e163] [cursor=pointer]:
+                - option "无（根）"
+                - option "层 1 · 立方"
+                - option "层 2 · 星四"
+                - option "层 3 · 十二" [selected]
+            - generic [ref=e164]:
+              - generic [ref=e165]: padding
+              - slider [ref=e166]: "0"
+              - generic [ref=e167]: 0%
+          - generic [ref=e168]:
+            - generic [ref=e169]:
+              - generic [ref=e171]: 面
+              - slider [ref=e172]: "10"
+              - generic [ref=e173]: auto
+              - button "A" [ref=e174] [cursor=pointer]
+            - generic [ref=e175]:
+              - generic [ref=e177]: 边
+              - slider [ref=e178]: "87"
+              - generic [ref=e179]: auto
+              - button "A" [ref=e180] [cursor=pointer]
+            - generic [ref=e181]:
+              - generic [ref=e183]: 点
+              - slider [ref=e184]: "90"
+              - generic [ref=e185]: auto
+              - button "A" [ref=e186] [cursor=pointer]
+    - generic [ref=e187]:
+      - button "+ 添加层" [ref=e188] [cursor=pointer]
+      - button "隐藏全部" [ref=e189] [cursor=pointer]
+      - button "↺" [ref=e190] [cursor=pointer]
