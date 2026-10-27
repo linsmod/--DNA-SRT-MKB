@@ -10,15 +10,19 @@
   canvas{display:block;}
   /* 统一色板：单一强调色 + 中性灰 + 一个危险红（面板 / 存档列表共用） */
   :root{--acc:#9dc0ff; --acc-soft:#bcd2f6; --txt:#dcdce6; --dim:#a6a6b8;
-    --faint:#82828f; --line:rgba(255,255,255,.14); --danger:#f0a0a0;}
-  #hud{position:fixed;top:16px;left:16px;background:rgba(12,12,22,.85);
-    padding:12px 16px;border-radius:12px;font-size:12px;line-height:1.6;
-    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);
-    pointer-events:none;max-width:260px;}
-  #hud .title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;}
-  #hud .stat{color:#aaa;font-variant-numeric:tabular-nums;}
-  #hud .stat b{color:#8ab4f8;font-weight:600;}
-  #hud .hint{color:#777;font-size:11px;margin-top:8px;line-height:1.5;}
+    --faint:#82828f; --line:rgba(255,255,255,.14); --danger:#f0a0a0;
+    --sideW:300px; --panelW:400px;}
+  /* 左侧栏：整块贴住窗口左边缘（自身无左右留白），区域之间只用一条分隔线 */
+  #side{position:fixed;left:0;top:0;bottom:0;width:var(--sideW);z-index:20;
+    display:flex;flex-direction:column;background:rgba(10,10,18,.94);
+    border-right:1px solid var(--line);backdrop-filter:blur(12px);overflow:hidden;
+    font-size:12px;line-height:1.5;color:var(--txt);}
+  #sideHead{flex:0 0 auto;padding:14px 14px 12px;border-bottom:1px solid var(--line);}
+  #sideHead .title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;}
+  #sideHead .stat{color:#aaa;font-variant-numeric:tabular-nums;}
+  #sideHead .stat b{color:#8ab4f8;font-weight:600;}
+  /* 主画面视口：夹在左栏与右侧编辑面板之间 */
+  #stage{position:fixed;left:var(--sideW);right:var(--panelW);top:0;bottom:0;}
 
   #panel{position:fixed;top:16px;right:16px;background:rgba(22,24,38,.94);
     padding:14px 14px;border-radius:12px;font-size:12px;line-height:1.5;
@@ -183,16 +187,13 @@
   #resetBtn:hover{background:rgba(255,255,255,.13);color:var(--txt);
     border-color:rgba(255,255,255,.32);}
 
-  /* ---------- 存档列表（左下角，[缩略图 文件名]，点击加载） ---------- */
-  #saves{position:fixed;left:16px;bottom:16px;width:252px;max-height:56vh;
-    display:flex;flex-direction:column;background:rgba(22,24,38,.94);
-    border:1px solid var(--line);border-radius:12px;padding:10px;
-    backdrop-filter:blur(10px);box-shadow:0 12px 36px rgba(0,0,0,.45);z-index:9;
-    font-size:12px;line-height:1.5;color:var(--txt);}
+  /* ---------- 存档（左侧栏中部） ---------- */
+  #saves{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+    border-bottom:1px solid var(--line);padding:12px 14px;}
   #saves .shead{font-size:11.5px;font-weight:600;color:#f2f3fa;margin-bottom:8px;
     display:flex;justify-content:space-between;align-items:center;gap:6px;}
   #saves .shead .shint{font-weight:400;font-size:10px;color:var(--faint);}
-  #saveList{flex:1;overflow-y:auto;}
+  #saveList{flex:1;overflow-y:auto;min-height:0;}
   #saveList::-webkit-scrollbar{width:6px;}
   #saveList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px;}
   .sitem{display:flex;align-items:center;gap:9px;width:100%;padding:6px 7px;
@@ -214,17 +215,14 @@
   #saves.off #saveCount{display:none;}
   #saves.off .soff{display:block;}
 
-  /* ---------- 2×2×2 组合立方体（主画面左侧，内容 = 主场景那份整体 ×8） ---------- */
-  #cube8Wrap{position:fixed;left:16px;top:50%;transform:translateY(-50%);
-    width:clamp(190px,26vh,300px);background:rgba(22,24,38,.9);
-    border:1px solid var(--line);border-radius:12px;padding:8px;
-    backdrop-filter:blur(10px);box-shadow:0 12px 36px rgba(0,0,0,.45);z-index:8;
-    display:flex;flex-direction:column;gap:6px;}
-  #cube8Wrap .c8head{font-size:11px;font-weight:600;color:#f2f3fa;
+  /* ---------- 2×2×2 组合立方体（左侧栏底部，独立相机） ---------- */
+  #cube8Wrap{flex:0 0 auto;padding:12px 14px 14px;}
+  #cube8Wrap .c8head{font-size:11px;font-weight:600;color:#f2f3fa;margin-bottom:6px;
     display:flex;justify-content:space-between;align-items:center;gap:6px;}
   #cube8Wrap .c8head .c8info{color:var(--faint);font-size:10px;font-weight:400;
     font-variant-numeric:tabular-nums;}
-  #cube8Canvas{width:100%;aspect-ratio:1/1;display:block;}
+  #cube8Canvas{width:100%;aspect-ratio:1/1;display:block;cursor:grab;}
+  #cube8Canvas:active{cursor:grabbing;}
 
   /* 面板底部：保存 / 另存为 */
   #saveRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
@@ -245,22 +243,26 @@
 </style>
 </head>
 <body>
-<div id="hud">
-  <div class="title">柏拉图立体 · 相对内嵌</div>
-  <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
-  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>点 <b>S</b> 单层模式：临时只看该层<br>悬停<b>缩略图</b> → 主场景只看该层<br>点击层卡 → 锁定只看该层（再点取消 · Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>左下载入存档 · 面板底部保存<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+<!-- 左侧栏：顶部标题 → 中部存档 → 底部组合立方体；区域之间只隔一条线 -->
+<div id="side">
+  <div id="sideHead">
+    <div class="title">柏拉图立体 · 相对内嵌</div>
+    <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
+  </div>
+
+  <div id="saves">
+    <div class="shead"><span>存档</span><span class="shint" id="saveCount">bolatu-saved/</span></div>
+    <div id="saveList"></div>
+    <div class="soff">未连接本地服务。<br>终端运行 <b>python server.py</b><br>再打开 http://127.0.0.1:8000/bolatu4.html</div>
+  </div>
+
+  <div id="cube8Wrap">
+    <div class="c8head"><span id="cube8Title">2×2×2 组合立方体</span><span class="c8info" id="cube8Info">—</span></div>
+    <canvas id="cube8Canvas"></canvas>
+  </div>
 </div>
 
-<div id="saves">
-  <div class="shead"><span>存档</span><span class="shint" id="saveCount">bolatu-saved/</span></div>
-  <div id="saveList"></div>
-  <div class="soff">未连接本地服务。<br>终端运行 <b>python server.py</b><br>再打开 http://127.0.0.1:8000/bolatu4.html</div>
-</div>
-
-<div id="cube8Wrap">
-  <div class="c8head"><span id="cube8Title">2×2×2 组合立方体</span><span class="c8info" id="cube8Info">—</span></div>
-  <canvas id="cube8Canvas"></canvas>
-</div>
+<div id="stage"></div>
 
 <div id="panel">
   <div class="ptitle"><span>层栈编辑</span><span id="summary">—</span></div>
@@ -289,6 +291,18 @@
 </script>
 <script type="module">
 import * as THREE from 'three';
+
+/* ============================================================
+ * 交互说明（只写在代码里，界面不再显示任何提示文字）
+ *   · 主画面：拖动 = 旋转，滚轮 = 缩放，空格 = 切换自转
+ *             点画布空白 / Esc = 取消「锁定只看某层」
+ *   · 组合立方体：独立相机（拖动旋转、滚轮缩放），与主画面互不影响
+ *   · 右侧面板：点层卡缩略图 = 换类型；眼睛 = 只隐藏该层（保留面/边/点透明度）
+ *               S = 单层模式（临时只看这一层）；点层卡 = 锁定只看该层
+ *               悬停缩略图 = 主场景临时预览该层；隐藏全部 = 一键全隐/恢复（H 键）
+ *   · 存档：面板底部保存 / 另存为（写入 bolatu-saved/，需 python server.py）
+ *   · 所有参数自动存本地（localStorage），刷新后自动恢复
+ * ============================================================ */
 
 // 组装式星四面体（经典脚本，配置 JSON 内嵌在 star-tetra-assembled.js 里）
 // 未加载时降级：该类型按直绘星四渲染，页面不会挂
@@ -536,6 +550,7 @@ function saveState() {
       v: 1,
       layers: layerDefs,
       cam: { rotX, rotY, z: camZ },
+      camCube: { rotX: cubeRotX, rotY: cubeRotY, zoom: cubeZoom },
     }));
   } catch (_) {}
 }
@@ -576,6 +591,13 @@ function applyStateData(data) {
     if (isFinite(data.cam.rotY)) rotY = data.cam.rotY;
     if (isFinite(data.cam.z)) camZ = Math.min(8, Math.max(2, data.cam.z));
   }
+  // 组合立方体的相机（老存档没有这段就保持当前值）
+  if (data.camCube && typeof data.camCube === 'object') {
+    if (isFinite(data.camCube.rotX)) cubeRotX = Math.min(1.3, Math.max(-1.3, data.camCube.rotX));
+    if (isFinite(data.camCube.rotY)) cubeRotY = data.camCube.rotY;
+    if (isFinite(data.camCube.zoom)) cubeZoom = Math.min(2.6, Math.max(0.45, data.camCube.zoom));
+    applyCubeZoom();
+  }
   return true;
 }
 
@@ -597,6 +619,8 @@ function clearState() {
 let renderer, scene, camera;
 let currentGroup = null;
 let rotY = 0.3, rotX = 0.15, camZ = 3.4;
+// 组合立方体的相机：与主画面完全独立（各自旋转、各自缩放，互不跟随）
+let cubeRotX = 0.15, cubeRotY = 0.3, cubeZoom = 1;
 let dragging = false, moved = false; let spaceHeld = true;
 let last = { x:0, y:0 };
 let autoRot = 0;
@@ -1236,6 +1260,7 @@ function collectSceneState() {
       return { ...rest };
     }),
     cam: { rotX, rotY, z: camZ },
+    camCube: { rotX: cubeRotX, rotY: cubeRotY, zoom: cubeZoom },
   };
 }
 
@@ -1729,20 +1754,37 @@ function updateHUD() {
 }
 
 // ---------- 初始化 ----------
+// 主画面视口 = 左栏与右侧面板之间的那块区域，尺寸随窗口同步
+function stageBox() {
+  const st = document.getElementById('stage');
+  return {
+    w: Math.max(1, st ? st.clientWidth : innerWidth),
+    h: Math.max(1, st ? st.clientHeight : innerHeight),
+  };
+}
+function resizeStage() {
+  if (!renderer || !camera) return;
+  const { w, h } = stageBox();
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
 function init() {
   loadState();
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight);
   renderer.domElement.style.touchAction = 'none';
-  document.body.appendChild(renderer.domElement);
+  renderer.domElement.style.cursor = 'grab';
+  document.getElementById('stage').appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x050508);
 
-  camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.002, 100);
+  camera = new THREE.PerspectiveCamera(45, 1, 0.002, 100);
   camera.position.set(0, 0, camZ);
+  resizeStage();
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const d1 = new THREE.DirectionalLight(0xffffff, 1.0); d1.position.set(3, 4, 5); scene.add(d1);
@@ -1766,7 +1808,7 @@ function init() {
   bindEvents();
   refreshSaves();
   initCube8();
-  window.addEventListener('resize', () => { if (cube8) cube8.resize(); });
+  bindCube8Controls();
   requestAnimationFrame(loop);
 }
 
@@ -1777,6 +1819,7 @@ function bindEvents() {
     dragging = true; moved = false;
     last = { x: e.clientX, y: e.clientY };
     el.setPointerCapture(e.pointerId);
+    el.style.cursor = 'grabbing';
   });
   el.addEventListener('pointermove', e => {
     if (!dragging) return;
@@ -1792,6 +1835,7 @@ function bindEvents() {
   el.addEventListener('pointerup', e => {
     if (e.button !== 0) return;
     dragging = false;
+    el.style.cursor = 'grab';
     try { el.releasePointerCapture(e.pointerId); } catch(_){}
     if (moved) scheduleSave();
     else setSelectedLayer(-1);   // 点画布空白 = 退出锁定
@@ -1804,9 +1848,8 @@ function bindEvents() {
     scheduleSave();
   }, { passive: false });
   window.addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
+    resizeStage();
+    if (cube8) cube8.resize();
   });
 
   document.getElementById('addBtn').addEventListener('click', () => {
@@ -1890,6 +1933,7 @@ function bindEvents() {
     layerDefs = DEFAULT_LAYERS.map(o => ({ ...o }));
     rotX = 0.15; rotY = 0.3; autoRot = 0; camZ = 3.4;
     camera.position.z = camZ;
+    cubeRotX = 0.15; cubeRotY = 0.3; cubeZoom = 1; applyCubeZoom();
     hideAllSnapshot = null;
     clearFocusState();
     clearState();
@@ -1933,10 +1977,55 @@ function applySpinRigs(rigs) {
   }
 }
 
-// ---------- 2×2×2 组合立方体（左侧视口；内容 = 主场景那份整体复制 8 份） ----------
+// ---------- 2×2×2 组合立方体（左栏底部视口；内容 = 主场景那份整体复制 8 份） ----------
+// 该视口有自己的一套相机（cubeRotX / cubeRotY / cubeZoom），与主画面互不影响
 let cube8 = null;          // cube8.js 提供的视口对象
 let cube8Rigs = [];        // 8 份副本各自的星四面体自转装置
 let cube8Timer = null;
+
+// 缩放直接作用在整组骨架上（cube8 的相机距离固定，改 scale 更直观）
+function applyCubeZoom() {
+  if (cube8 && cube8.group) cube8.group.scale.setScalar(cubeZoom);
+}
+
+// 组合立方体的独立相机控制：拖动旋转、滚轮缩放
+function bindCube8Controls() {
+  const cv = document.getElementById('cube8Canvas');
+  if (!cv) return;
+  let dragging = false, moved = false;
+  let last = { x: 0, y: 0 };
+
+  cv.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    dragging = true; moved = false;
+    last = { x: e.clientX, y: e.clientY };
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - last.x, dy = e.clientY - last.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    last = { x: e.clientX, y: e.clientY };
+    if (moved) {
+      cubeRotY += dx * 0.007;
+      cubeRotX = Math.max(-1.3, Math.min(1.3, cubeRotX + dy * 0.007));
+    }
+  });
+  const end = e => {
+    if (!dragging) return;
+    dragging = false;
+    try { cv.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (moved) scheduleSave();
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    cubeZoom = Math.max(0.45, Math.min(2.6, cubeZoom * (1 - e.deltaY * 0.001)));
+    applyCubeZoom();
+    scheduleSave();
+  }, { passive: false });
+}
 
 function initCube8() {
   const canvas = document.getElementById('cube8Canvas');
@@ -1957,6 +2046,7 @@ function initCube8() {
   });
   const title = document.getElementById('cube8Title');
   if (title) title.textContent = grid + '×' + grid + '×' + grid + ' 组合立方体';
+  applyCubeZoom();
   rebuildCube8();
 }
 
@@ -1964,7 +2054,7 @@ function rebuildCube8() {
   if (!cube8) return;
   cube8Rigs = [];
   cube8.setAll();
-  cube8.setRotation(rotX, rotY + autoRot);
+  cube8.setRotation(cubeRotX, cubeRotY);   // 独立姿态：不跟随主画面
   cube8.resize();
   cube8.render();
   const vis = getVisibleOrder(currentRadii).length;
@@ -2006,9 +2096,9 @@ function loop() {
   camera.lookAt(0, 0, 0);
   renderer.render(scene, camera);
 
-  // 左侧 2×2×2 组合立方体：与主场景同姿态，副本各自自转
+  // 左侧 2×2×2 组合立方体：独立相机（姿态由 cubeRotX/cubeRotY 决定），副本各自自转
   if (cube8) {
-    cube8.setRotation(rotX, rotY + autoRot);
+    cube8.setRotation(cubeRotX, cubeRotY);
     applySpinRigs(cube8Rigs);
     cube8.render();
   }
