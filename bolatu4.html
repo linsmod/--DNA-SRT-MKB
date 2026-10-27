@@ -8,6 +8,9 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#050508;
     font-family:system-ui,sans-serif;color:#ccc;}
   canvas{display:block;}
+  /* 统一色板：单一强调色 + 中性灰 + 一个危险红（面板 / 存档列表共用） */
+  :root{--acc:#9dc0ff; --acc-soft:#bcd2f6; --txt:#dcdce6; --dim:#a6a6b8;
+    --faint:#82828f; --line:rgba(255,255,255,.14); --danger:#f0a0a0;}
   #hud{position:fixed;top:16px;left:16px;background:rgba(12,12,22,.85);
     padding:12px 16px;border-radius:12px;font-size:12px;line-height:1.6;
     backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);
@@ -22,10 +25,7 @@
     backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);width:352px;
     color:#dcdce6;z-index:10;max-height:calc(100vh - 32px);display:flex;
     flex-direction:column;
-    box-shadow:0 12px 36px rgba(0,0,0,.45);
-    /* 统一色板：单一强调色 + 中性灰 + 一个危险红（整体提亮一档） */
-    --acc:#9dc0ff; --acc-soft:#bcd2f6; --txt:#dcdce6; --dim:#a6a6b8;
-    --faint:#82828f; --line:rgba(255,255,255,.14); --danger:#f0a0a0;}
+    box-shadow:0 12px 36px rgba(0,0,0,.45);}
   #panel .ptitle{font-size:12.5px;font-weight:600;color:#f2f3fa;margin-bottom:10px;
     display:flex;justify-content:space-between;align-items:center;}
   #panel .ptitle span:last-child{color:var(--faint);font-size:10px;font-weight:400;}
@@ -169,6 +169,50 @@
   #resetBtn:hover{background:rgba(255,255,255,.13);color:var(--txt);
     border-color:rgba(255,255,255,.32);}
 
+  /* ---------- 存档列表（左下角，[缩略图 文件名]，点击加载） ---------- */
+  #saves{position:fixed;left:16px;bottom:16px;width:252px;max-height:56vh;
+    display:flex;flex-direction:column;background:rgba(22,24,38,.94);
+    border:1px solid var(--line);border-radius:12px;padding:10px;
+    backdrop-filter:blur(10px);box-shadow:0 12px 36px rgba(0,0,0,.45);z-index:9;
+    font-size:12px;line-height:1.5;color:var(--txt);}
+  #saves .shead{font-size:11.5px;font-weight:600;color:#f2f3fa;margin-bottom:8px;
+    display:flex;justify-content:space-between;align-items:center;gap:6px;}
+  #saves .shead .shint{font-weight:400;font-size:10px;color:var(--faint);}
+  #saveList{flex:1;overflow-y:auto;}
+  #saveList::-webkit-scrollbar{width:6px;}
+  #saveList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px;}
+  .sitem{display:flex;align-items:center;gap:9px;width:100%;padding:6px 7px;
+    border:1px solid var(--line);border-radius:0;background:rgba(255,255,255,.045);
+    color:var(--txt);font:inherit;font-size:11.5px;text-align:left;cursor:pointer;
+    margin-bottom:-1px;transition:background .12s,border-color .12s;}
+  .sitem:last-child{margin-bottom:0;}
+  .sitem:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.3);}
+  .sitem.cur{background:rgba(157,192,255,.2);border-color:rgba(157,192,255,.6);color:#fff;}
+  .sitem img{width:44px;height:28px;object-fit:cover;display:block;flex-shrink:0;
+    background:rgba(6,8,16,.7);border:1px solid rgba(255,255,255,.14);}
+  .sitem .snoimg{width:44px;height:28px;flex-shrink:0;background:rgba(255,255,255,.05);
+    border:1px dashed rgba(255,255,255,.16);}
+  .sitem .sname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;}
+  .sempty{font-size:11px;color:var(--faint);padding:6px 2px;}
+  .soff{display:none;font-size:11px;color:var(--faint);line-height:1.6;padding:6px 2px;}
+  #saves.off #saveList{display:none;}
+  #saves.off #saveCount{display:none;}
+  #saves.off .soff{display:block;}
+
+  /* 面板底部：保存 / 另存为 */
+  #saveRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
+  #saveBtn,#saveAsBtn{flex:1;padding:8px 0;border-radius:6px;cursor:pointer;
+    font-size:11.5px;font-family:inherit;transition:all .15s;}
+  #saveBtn{border:1px solid rgba(157,192,255,.5);background:rgba(157,192,255,.2);
+    color:#e2ecff;}
+  #saveBtn:hover{background:rgba(157,192,255,.32);border-color:rgba(157,192,255,.7);}
+  #saveAsBtn{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);
+    color:var(--dim);}
+  #saveAsBtn:hover{background:rgba(255,255,255,.12);color:var(--txt);
+    border-color:rgba(255,255,255,.34);}
+  #saveBtn:disabled,#saveAsBtn:disabled{opacity:.45;cursor:not-allowed;}
+
   #error{position:fixed;inset:0;display:none;align-items:center;
     justify-content:center;background:#050508;color:#f88;padding:24px;
     text-align:center;z-index:100;}
@@ -178,7 +222,13 @@
 <div id="hud">
   <div class="title">柏拉图立体 · 相对内嵌</div>
   <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
-  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停层卡 → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>删除会弹窗确认<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停层卡 → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>左下载入存档 · 面板底部保存<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+</div>
+
+<div id="saves">
+  <div class="shead"><span>存档</span><span class="shint" id="saveCount">bolatu-saved/</span></div>
+  <div id="saveList"></div>
+  <div class="soff">未连接本地服务。<br>终端运行 <b>python server.py</b><br>再打开 http://127.0.0.1:8000/bolatu4.html</div>
 </div>
 
 <div id="panel">
@@ -188,6 +238,10 @@
     <button id="addBtn">+ 添加层</button>
     <button id="hideAllBtn" title="一键隐藏全部层 / 恢复（H 键）">隐藏全部</button>
     <button id="resetBtn" title="恢复默认并清除本地保存">↺</button>
+  </div>
+  <div id="saveRow">
+    <button id="saveBtn" title="保存到 bolatu-saved/（需要 python server.py）">保存</button>
+    <button id="saveAsBtn" title="另存为新名字">另存为</button>
   </div>
 </div>
 
@@ -412,14 +466,9 @@ function saveState() {
   } catch (_) {}
 }
 
-function loadState() {
-  let raw;
-  try { raw = localStorage.getItem(STORE_KEY); } catch (_) { return; }
-  if (!raw) return;
-
-  let data;
-  try { data = JSON.parse(raw); } catch (_) { return; }
-  if (!data || !Array.isArray(data.layers) || !data.layers.length) return;
+// 读一份 {layers, cam} 数据（localStorage 或服务器存档共用）：规范化后写进 layerDefs
+function applyStateData(data) {
+  if (!data || !Array.isArray(data.layers) || !data.layers.length) return false;
 
   const out = [];
   for (const L of data.layers) {
@@ -437,7 +486,7 @@ function loadState() {
     });
     if (out.length >= MAX_LAYERS) break;
   }
-  if (!out.length) return;
+  if (!out.length) return false;
 
   for (let i = 0; i < out.length; i++) {
     const r = out[i].relTo;
@@ -450,6 +499,17 @@ function loadState() {
     if (isFinite(data.cam.rotY)) rotY = data.cam.rotY;
     if (isFinite(data.cam.z)) camZ = Math.min(8, Math.max(2, data.cam.z));
   }
+  return true;
+}
+
+function loadState() {
+  let raw;
+  try { raw = localStorage.getItem(STORE_KEY); } catch (_) { return; }
+  if (!raw) return;
+
+  let data;
+  try { data = JSON.parse(raw); } catch (_) { return; }
+  applyStateData(data);
 }
 
 function clearState() {
@@ -862,6 +922,161 @@ function openTypeMenu(k, anchor) {
   m.style.visibility = '';
 }
 
+// ---------- 存档：server.py 读写 bolatu-saved/ ----------
+const API_SAVES = 'api/saves';
+const API_SAVE = 'api/save';
+let serverOK = false;         // 本地服务是否可用（fetch 通了）
+let currentSave = null;       // 当前存档名（保存 = 覆盖它）
+let saveFlashTimer = null;
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function collectSceneState() {
+  return {
+    v: 1,
+    layers: layerDefs.map(L => ({ ...L })),
+    cam: { rotX, rotY, z: camZ },
+  };
+}
+
+// 主场景截图：同一帧里 render 完立刻读像素（无需 preserveDrawingBuffer）
+function snapshotThumb() {
+  if (!renderer || !scene || !camera) return null;
+  renderer.render(scene, camera);
+  const src = renderer.domElement;
+  const W = 320, H = 200;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#050508';
+  ctx.fillRect(0, 0, W, H);
+  const k = Math.max(W / src.width, H / src.height);   // 撑满后居中裁切
+  ctx.drawImage(src, (W - src.width * k) / 2, (H - src.height * k) / 2,
+    src.width * k, src.height * k);
+  return cv.toDataURL('image/png');
+}
+
+// 输入名字：优先用 dialog.js，缺失时退回原生 prompt
+function askName(message, opts) {
+  if (typeof window !== 'undefined' && window.Dialog && window.Dialog.prompt) {
+    return window.Dialog.prompt(message, opts);
+  }
+  const v = window.prompt(message, (opts && opts.value) || '');
+  return Promise.resolve(v);
+}
+
+function setSaveFlash(text) {
+  const el = document.getElementById('saveCount');
+  if (!el) return;
+  clearTimeout(saveFlashTimer);
+  el.textContent = text;
+  el.style.color = 'rgba(150,225,175,.95)';
+  saveFlashTimer = setTimeout(() => {
+    el.style.color = '';
+    refreshSaves();
+  }, 2000);
+}
+
+function renderSaves(items) {
+  const list = document.getElementById('saveList');
+  if (!list) return;
+  const n = items.length;
+  const cnt = document.getElementById('saveCount');
+  if (cnt) cnt.textContent = n ? n + ' 个' : 'bolatu-saved/';
+  if (!n) {
+    list.innerHTML = '<div class="sempty">暂无存档</div>';
+    return;
+  }
+  list.innerHTML = items.map(it => {
+    const cur = (it.name === currentSave) ? ' cur' : '';
+    const thumb = it.thumbUrl
+      ? `<img src="${escHtml(it.thumbUrl)}" alt="">`
+      : '<span class="snoimg"></span>';
+    return `<button class="sitem${cur}" data-name="${escHtml(it.name)}" `
+      + `title="${escHtml(it.name)}">${thumb}<span class="sname">${escHtml(it.name)}</span></button>`;
+  }).join('');
+}
+
+async function refreshSaves() {
+  const wrap = document.getElementById('saves');
+  if (!wrap) return;
+  try {
+    const res = await fetch(API_SAVES, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || 'fail');
+    serverOK = true;
+    wrap.classList.remove('off');
+    renderSaves(j.items || []);
+  } catch (_) {
+    serverOK = false;
+    wrap.classList.add('off');
+    renderSaves([]);
+  }
+}
+
+async function saveScene(asNew) {
+  if (!serverOK) {
+    await notify('保存需要先启动本地服务：\n\npython server.py\n\n然后打开 http://127.0.0.1:8000/bolatu4.html',
+      { title: '未连接服务', okText: '知道了' });
+    return;
+  }
+  let name = asNew ? '' : (currentSave || '');
+  if (!name) {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const suggest = currentSave
+      ? currentSave + '-副本'
+      : `场景-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+    const v = await askName('写入 bolatu-saved/（同名会覆盖）', {
+      title: asNew ? '另存为' : '保存场景',
+      value: suggest,
+      okText: '保存',
+      placeholder: '例如 曼陀罗-01',
+    });
+    if (v === null || v === undefined) return;
+    name = String(v).trim();
+    if (!name) return;
+  }
+  try {
+    const res = await fetch(API_SAVE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, data: collectSceneState(), thumb: snapshotThumb() }),
+    });
+    const j = await res.json().catch(() => ({ ok: false, error: '返回不是 JSON' }));
+    if (!j.ok) throw new Error(j.error || '保存失败');
+    currentSave = j.name || name;
+    renderSaves(j.items || []);
+    setSaveFlash('已保存 ' + currentSave);
+  } catch (e) {
+    await notify('保存失败：' + (e && e.message ? e.message : e), { title: '保存失败' });
+  }
+}
+
+async function loadSave(name) {
+  try {
+    const res = await fetch(API_SAVE + '?name=' + encodeURIComponent(name), { cache: 'no-store' });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || '加载失败');
+    if (!applyStateData(j.data)) throw new Error('存档内容不完整');
+    currentSave = j.name || name;
+    hideAllSnapshot = null;
+    closeTypeMenu();
+    clearFocusState();
+    if (camera) camera.position.z = camZ;
+    rebuild();
+    scheduleSave();
+    refreshSaves();
+  } catch (e) {
+    await notify('加载失败：' + (e && e.message ? e.message : e), { title: '加载失败' });
+  }
+}
+
 // ---------- 面板 ----------
 function eyeIcon(hidden) {
   const slash = hidden
@@ -1174,6 +1389,7 @@ function init() {
 
   rebuild();
   bindEvents();
+  refreshSaves();
   requestAnimationFrame(loop);
 }
 
@@ -1274,6 +1490,14 @@ function bindEvents() {
 
   document.getElementById('hideAllBtn').addEventListener('click', () => {
     toggleHideAll();
+  });
+
+  // 保存 / 另存为 / 点列表加载
+  document.getElementById('saveBtn').addEventListener('click', () => saveScene(false));
+  document.getElementById('saveAsBtn').addEventListener('click', () => saveScene(true));
+  document.getElementById('saveList').addEventListener('click', e => {
+    const btn = (e.target && e.target.closest) ? e.target.closest('.sitem') : null;
+    if (btn && btn.dataset.name) loadSave(btn.dataset.name);
   });
 
   document.getElementById('resetBtn').addEventListener('click', async () => {

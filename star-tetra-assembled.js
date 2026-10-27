@@ -72,8 +72,9 @@ const CONFIG = {
     { id: 'neon', name: '霓虹',   colors: { S: '#4ff5ff', R: '#ff56c8', T: '#b6ff3a' } }
   ],
   groups: { upper: { mode: 0 }, lower: { mode: 0 } },
-  /* axisOffset = 编辑器里的「轴移」，沿编辑器竖直轴挪动整组；0.02 属于配置即事实 */
-  frames: { upper: { rotationDeg: 0, axisOffset: -0.02 }, lower: { rotationDeg: 0, axisOffset: 0 } }
+  /* axisOffset = 编辑器里的「轴移」。这里必须是 0：两组同心才咬合成星四面体，
+     非 0 会让中央八面体那 12 条棱错开成平行双线（编辑器导出的 -0.02 已归零）。 */
+  frames: { upper: { rotationDeg: 0, axisOffset: 0 }, lower: { rotationDeg: 0, axisOffset: 0 } }
 };
 
 /* ============================================================
@@ -128,6 +129,11 @@ const vnorm = a => {
   const l = Math.hypot(a[0], a[1], a[2]) || 1;
   return [a[0] / l, a[1] / l, a[2] / l];
 };
+
+/* 坐标 key：抹掉 -0 与浮点残差（1e-5），供顶点 / 棱去重 */
+function pointKey(p) {
+  return p.map(v => (Math.abs(v) < 5e-5 ? 0 : v).toFixed(4)).join(',');
+}
 
 function orthoFrame(A) {
   const e1 = vnorm(vsub(A[1], A[0]));
@@ -345,18 +351,27 @@ function build(THREE, opts) {
     }
   }
 
-  /* ---- 棱：按 srt|style 分桶，实线 / 虚线各一个 LineSegments ---- */
+  /* ---- 棱：按 srt|style 分桶，实线 / 虚线各一个 LineSegments ----
+     两组（上/下）的中央八面体是同一个，它的 12 条棱会被两件各报一次；
+     这里按端点去重，同一根棱只画一次（先到先得：上组优先），
+     否则重合的两条线会因为颜色/虚线相位不同而重影。 */
   if (edgeOp > minOp) {
     const buckets = {};
+    const drawnEdge = new Set();
     for (const q of quads) {
       (q.piece.edges || []).forEach((e, ei) => {
         const def = EDGE_DEFS[ei];
         if (!def) return;
+        const a = q.pts[def[0]], b = q.pts[def[1]];
+        const ka = pointKey(a), kb = pointKey(b);
+        const edgeKey = ka < kb ? ka + '>' + kb : kb + '>' + ka;
+        if (drawnEdge.has(edgeKey)) return;
+        drawnEdge.add(edgeKey);
+
         const srt = (e && cols[e.srt]) ? e.srt : 'S';
         const style = (e && e.style === 'dashed') ? 'dashed' : 'solid';
         const key = srt + '|' + style;
         if (!buckets[key]) buckets[key] = { srt, style, pos: [] };
-        const a = q.pts[def[0]], b = q.pts[def[1]];
         buckets[key].pos.push(a[0] * R, a[1] * R, a[2] * R, b[0] * R, b[1] * R, b[2] * R);
       });
     }
@@ -392,7 +407,7 @@ function build(THREE, opts) {
     });
     const seen = new Set();
     const addDot = (p, scale) => {
-      const key = `${p[0].toFixed(4)},${p[1].toFixed(4)},${p[2].toFixed(4)}`;
+      const key = pointKey(p);
       if (seen.has(key)) return;
       seen.add(key);
       const dot = new THREE.Mesh(sph, mat);
