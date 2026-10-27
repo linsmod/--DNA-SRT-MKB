@@ -59,7 +59,7 @@
     border-right:1px solid rgba(255,255,255,.1);}
   .lbody{flex:1 1 auto;min-width:0;}
   /* 眼睛：放大并独占左栏，卡片再高也只有它在顶部 */
-  .leye{width:32px;height:32px;border-radius:6px;border:1px solid rgba(255,255,255,.18);
+  .leye{width:44px;height:30px;border-radius:6px;border:1px solid rgba(255,255,255,.18);
     background:rgba(255,255,255,.07);color:var(--dim);cursor:pointer;padding:0;
     display:flex;align-items:center;justify-content:center;flex-shrink:0;
     transition:all .15s;}
@@ -71,6 +71,14 @@
   .leye.on:hover{color:#cfe0ff;}
   .leye.off:hover{color:var(--txt);}
   .leye svg{display:block;width:20px;height:20px;}
+  /* 眼睛下方：该层单独渲染的缩略图 */
+  .lthumb{margin-top:7px;width:44px;height:44px;border-radius:6px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.13);background:rgba(6,8,16,.55);
+    flex-shrink:0;transition:border-color .15s,opacity .15s;}
+  .lthumb img{width:100%;height:100%;display:block;}
+  .lthumb.empty{background:rgba(255,255,255,.02);border-style:dashed;}
+  .layerCard.selected .lthumb{border-color:rgba(157,192,255,.5);}
+  .layerCard.user-hidden .lthumb{opacity:.45;}
   .lhead{display:flex;justify-content:space-between;align-items:center;
     font-size:11.5px;margin-bottom:7px;gap:4px;}
   .lhead .lname{color:var(--txt);font-weight:600;flex-shrink:0;}
@@ -666,6 +674,104 @@ function rebuild() {
   rebuildPanel();
 }
 
+// ---------- 层缩略图：把单层单独渲染成一张小图（眼睛下方） ----------
+const THUMB_PX = 128;                 // 离屏渲染分辨率
+const THUMB_DIR = [0.86, 0.66, 1.5];  // 固定视角方向
+let thumbR = null, thumbScene = null, thumbCam = null;
+const thumbCache = new Map();
+
+function ensureThumbRenderer() {
+  if (thumbR) return true;
+  try {
+    const canvas = document.createElement('canvas');
+    thumbR = new THREE.WebGLRenderer({
+      canvas, antialias: true, alpha: true, preserveDrawingBuffer: true,
+    });
+    thumbR.setPixelRatio(1);
+    thumbR.setSize(THUMB_PX, THUMB_PX, false);
+    thumbR.setClearColor(0x000000, 0);
+    thumbScene = new THREE.Scene();
+    thumbScene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const l1 = new THREE.DirectionalLight(0xffffff, 1.0); l1.position.set(3, 4, 5); thumbScene.add(l1);
+    const l2 = new THREE.DirectionalLight(0x6688ff, 0.55); l2.position.set(-4, -2, -3); thumbScene.add(l2);
+    thumbCam = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
+    return true;
+  } catch (_) {
+    thumbR = null;
+    return false;   // 拿不到第二个 WebGL 上下文就退化成空框
+  }
+}
+
+// 手动值照用；auto 时给一组偏清晰的值（主场景 auto 的面 0.025 在 44px 里看不见）
+function thumbOps(L) {
+  return {
+    face: (L.opacityFace == null) ? 0.10 : L.opacityFace,
+    edge: (L.opacityEdge == null) ? 0.95 : L.opacityEdge,
+    dot:  (L.opacityDot  == null) ? 0.75 : L.opacityDot,
+  };
+}
+
+function thumbUrl(k, L, r) {
+  const o = thumbOps(L);
+  const key = [L.type, r.toFixed(4), o.face, o.edge, o.dot].join('|');
+  const hit = thumbCache.get(k);
+  if (hit && hit.key === key) return hit.url;
+  if (!ensureThumbRenderer()) return null;
+
+  const g = new THREE.Group();
+  const color = POLY[L.type].color;
+  if (L.type === 'AssembledStar' && StarAsm) {
+    addAssembledLayer(g, L, r, color, o.face, o.edge, o.dot);
+  } else {
+    addPlainLayer(g, L, r, color, o.face, o.edge, o.dot);
+  }
+
+  thumbScene.add(g);
+  const d = Math.max(r, 0.02) * 3.2;       // 相机距离跟半径走，小层也填满小图
+  thumbCam.position.set(THUMB_DIR[0], THUMB_DIR[1], THUMB_DIR[2]).normalize().multiplyScalar(d);
+  thumbCam.near = d * 0.02;
+  thumbCam.far = d * 12;
+  thumbCam.updateProjectionMatrix();
+  thumbCam.lookAt(0, 0, 0);
+  thumbR.render(thumbScene, thumbCam);
+  thumbScene.remove(g);
+  disposeGroup(g);
+
+  const url = thumbR.domElement.toDataURL('image/png');
+  thumbCache.set(k, { key, url });
+  return url;
+}
+
+function paintThumbBox(box) {
+  const k = Number(box.dataset.idx);
+  const L = layerDefs[k];
+  const r = currentRadii[k] || 0;
+  box.innerHTML = '';
+  if (!L || !(r > 0)) { box.classList.add('empty'); return; }
+  const url = thumbUrl(k, L, r);
+  if (!url) { box.classList.add('empty'); return; }
+  box.classList.remove('empty');
+  const img = document.createElement('img');
+  img.alt = '';
+  img.src = url;
+  box.appendChild(img);
+}
+
+function paintThumbs(root) {
+  root.querySelectorAll('.lthumb').forEach(paintThumbBox);
+}
+
+// 拖动参数时只重绘受影响的那一层（节流，避免每帧都跑一遍离屏渲染）
+const thumbTimers = new Map();
+function scheduleThumb(k) {
+  if (thumbTimers.has(k)) return;
+  thumbTimers.set(k, setTimeout(() => {
+    thumbTimers.delete(k);
+    const box = document.querySelector(`#layerList .lthumb[data-idx="${k}"]`);
+    if (box) paintThumbBox(box);
+  }, 110));
+}
+
 // ---------- 面板 ----------
 function eyeIcon(hidden) {
   const slash = hidden
@@ -701,10 +807,11 @@ function rebuildPanel() {
 
     html += `<div class="${cardCls}" data-idx="${k}">`;
 
-    // —— 左栏：可见性（独占一列，卡片再高也只有它在顶部） ——
+    // —— 左栏：可见性 + 该层单渲缩略图（独占一列） ——
     html += `<div class="lside">`;
     html += `<button class="leye ${hidden ? 'off' : 'on'}" data-act="vis" data-idx="${k}"
       title="${hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）'}">${eyeIcon(hidden)}</button>`;
+    html += `<div class="lthumb" data-idx="${k}" title="该层单独渲染预览"></div>`;
     html += `</div>`;
 
     // —— 右栏：名称 / 半径 / 删除 + 类型 + 相对/padding + 面边点 ——
@@ -763,6 +870,7 @@ function rebuildPanel() {
   list.innerHTML = html;
   bindPanelEvents(list);
   updateHideAllBtn();
+  paintThumbs(list);
 }
 
 // ---------- 隐藏 / 显示 ----------
@@ -849,6 +957,7 @@ function bindPanelEvents(list) {
       const span = slider.parentElement.querySelector('.lval');
       if (span) span.textContent = slider.value + '%';
       refreshScene();
+      scheduleThumb(idx);       // 拖动中实时刷新该层缩略图（节流）
     });
     slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
   });
@@ -863,8 +972,10 @@ function bindPanelEvents(list) {
         const btn = slider.parentElement.querySelector('.lauto');
         if (btn) btn.classList.remove('on');
         refreshScene();
+        scheduleThumb(idx);     // 0 → 非 0 时缩略图必须跟着变
       });
-      slider.addEventListener('change', scheduleSave);
+      // 松手后整表重绘一次，保证 auto 百分比 / 缩略图与最终值一致
+      slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
     });
   }
 
