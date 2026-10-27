@@ -18,12 +18,14 @@
  *     radius: 1,
  *     opacity: { face: 0.06, edge: 0.85, dot: 0.6 },
  *     faceColor: 0xc9a2ff,
- *     // 可选：RST 投影 —— 把每条棱沿「中心向外」的射线投到相对层的表面上
+ *     // 可选：RST 投影 —— 把每条棱 / 每个点 / 每个卦名标签沿「中心向外」的射线
+ *     // 投到相对层的表面上。project.fn 在本层的单位空间里求值（本层半径 = 1），
+ *     // 返回值同样是单位空间坐标：
  *     project: { fn: (p) => [x, y, z], amount: 1, segments: 8 },
  *   });
  *
- * 返回的 THREE.Group 每个子对象带 userData.kind = 'face' | 'edge' | 'dot'，
- * 外部可据此二次调节透明度 / 拾取。
+ * 返回的 THREE.Group 每个子对象带 userData.kind = 'face' | 'edge' | 'dot' | 'label'，
+ * 外部可据此二次调节透明度 / 拾取；卦名标签另有 userData.trigram。
  */
 (function (root) {
 'use strict';
@@ -33,33 +35,34 @@
  * ============================================================ */
 const CONFIG = {
   schema: 'mksr.star-tetrahedron.editor/1',
-  savedAt: '2026-10-26T18:21:24.844Z',
+  savedAt: '2026-10-27T02:24:53.929Z',
   pieces: [
-    { id: 1, group: 'upper', edges: [
+    { id: 1, group: 'upper', trigram: '乾', lines: [1,1,1], edges: [
       { srt: 'S', style: 'solid' }, { srt: 'R', style: 'solid' }, { srt: 'T', style: 'solid' },
       { srt: 'T', style: 'solid' }, { srt: 'R', style: 'solid' }, { srt: 'S', style: 'solid' } ] },
-    { id: 2, group: 'upper', edges: [
+    { id: 2, group: 'upper', trigram: '艮', lines: [0,0,1], edges: [
       { srt: 'S', style: 'solid' }, { srt: 'R', style: 'dashed' }, { srt: 'T', style: 'dashed' },
       { srt: 'T', style: 'dashed' }, { srt: 'R', style: 'dashed' }, { srt: 'S', style: 'solid' } ] },
-    { id: 3, group: 'upper', edges: [
+    { id: 3, group: 'upper', trigram: '坎', lines: [0,1,0], edges: [
       { srt: 'S', style: 'dashed' }, { srt: 'R', style: 'solid' }, { srt: 'T', style: 'dashed' },
       { srt: 'T', style: 'dashed' }, { srt: 'R', style: 'solid' }, { srt: 'S', style: 'dashed' } ] },
-    { id: 4, group: 'upper', edges: [
+    { id: 4, group: 'upper', trigram: '震', lines: [1,0,0], edges: [
       { srt: 'S', style: 'dashed' }, { srt: 'R', style: 'dashed' }, { srt: 'T', style: 'solid' },
       { srt: 'T', style: 'solid' }, { srt: 'R', style: 'dashed' }, { srt: 'S', style: 'dashed' } ] },
-    { id: 5, group: 'lower', edges: [
+    { id: 5, group: 'lower', trigram: '坤', lines: [0,0,0], edges: [
       { srt: 'S', style: 'dashed' }, { srt: 'R', style: 'dashed' }, { srt: 'T', style: 'dashed' },
       { srt: 'T', style: 'dashed' }, { srt: 'R', style: 'dashed' }, { srt: 'S', style: 'dashed' } ] },
-    { id: 6, group: 'lower', edges: [
+    { id: 6, group: 'lower', trigram: '兑', lines: [1,1,0], edges: [
       { srt: 'S', style: 'dashed' }, { srt: 'R', style: 'solid' }, { srt: 'T', style: 'solid' },
       { srt: 'T', style: 'solid' }, { srt: 'R', style: 'solid' }, { srt: 'S', style: 'dashed' } ] },
-    { id: 7, group: 'lower', edges: [
+    { id: 7, group: 'lower', trigram: '离', lines: [1,0,1], edges: [
       { srt: 'S', style: 'solid' }, { srt: 'R', style: 'dashed' }, { srt: 'T', style: 'solid' },
       { srt: 'T', style: 'solid' }, { srt: 'R', style: 'dashed' }, { srt: 'S', style: 'solid' } ] },
-    { id: 8, group: 'lower', edges: [
+    { id: 8, group: 'lower', trigram: '巽', lines: [0,1,1], edges: [
       { srt: 'S', style: 'solid' }, { srt: 'R', style: 'solid' }, { srt: 'T', style: 'dashed' },
       { srt: 'T', style: 'dashed' }, { srt: 'R', style: 'solid' }, { srt: 'S', style: 'solid' } ] }
   ],
+  bagua: ['乾','艮','坎','震','坤','兑','离','巽'],
   slots: {
     upper: [ { piece: 1, variant: 1 }, { piece: 2, variant: 5 },
              { piece: 3, variant: 0 }, { piece: 4, variant: 4 } ],
@@ -272,6 +275,59 @@ function piecePoints(V, slotIdx, variantIdx) {
 }
 
 /* ============================================================
+ * 4.5 卦象：卦名推导 + 卦名贴图
+ * ============================================================ */
+/* 八卦三爻 [初,二,三]（1=阳实线 0=阴虚线）→ 卦名（帛书序，与 editor.html 一致）
+   1乾 2艮 3坎 4震 5坤 6兑 7离 8巽 */
+const GUA_TABLE = {
+  '111': '乾', '001': '艮', '010': '坎', '100': '震',
+  '000': '坤', '110': '兑', '101': '离', '011': '巽'
+};
+/* 爻位 ↔ 颜色：三爻 = S，二爻 = R，初爻 = T（同 editor.html GUA_SRT_LINE） */
+const GUA_SRT_LINE = { S: 2, R: 1, T: 0 };
+
+/* 卦名：优先用配置里的 trigram（编辑器存档 / 导出时写入），
+   没有就按棱的虚实推：同一 S/R/T 的两条棱虚实一致 → 三爻阴阳 → 卦名 */
+function pieceTrigram(piece) {
+  if (!piece) return '';
+  if (piece.trigram) return String(piece.trigram);
+  const lines = [null, null, null];
+  (piece.edges || []).forEach(e => {
+    const i = GUA_SRT_LINE[e && e.srt];
+    if (i === undefined) return;
+    lines[i] = (e.style === 'dashed') ? 0 : 1;
+  });
+  if (lines.some(v => v === null)) return '';
+  return GUA_TABLE[lines.join('')] || '';
+}
+
+/* 卦名贴图：canvas 画字，按卦名缓存一次（全场共用，不随重建重复生成） */
+const LABEL_TEX = new Map();
+function labelTexture(THREE, ch) {
+  if (LABEL_TEX.has(ch)) return LABEL_TEX.get(ch);
+  if (typeof document === 'undefined') return null;
+  const S = 160;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, S, S);
+  ctx.font = '700 110px "Microsoft YaHei","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 16;
+  ctx.strokeStyle = 'rgba(5,6,12,.92)';   // 深色描边：亮面 / 深底都读得出
+  ctx.strokeText(ch, S / 2, S / 2 + 6);
+  ctx.fillStyle = '#eef2ff';
+  ctx.fillText(ch, S / 2, S / 2 + 6);
+  const tex = new THREE.CanvasTexture(cv);
+  if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  LABEL_TEX.set(ch, tex);
+  return tex;
+}
+
+/* ============================================================
  * 5. 构建 THREE.Group
  * ============================================================ */
 /* 可运行期改写的全局默认：
@@ -341,6 +397,29 @@ function build(THREE, opts) {
   }
   const laneOf = key => (split ? lanes[key] : group);
 
+  /* ---- RST 投影（公共）：棱 / 点 / 卦名标签共用同一套 warp ----
+     给了 project.fn 时，沿「中心向外」的射线把点推到相对层表面上，再按 amount 插值。
+     棱按 projSeg 细分后逐点 warp（虚线才不会断开）；
+     点与卦名标签直接 warp 顶点本身 —— 三者始终咬合，不会出现「棱飞出去、点留在原地」。 */
+  const proj = o.project || null;
+  const projFn = (proj && typeof proj.fn === 'function') ? proj.fn : null;
+  const projAmt = (proj && isFinite(proj.amount)) ? Math.min(1, Math.max(0, proj.amount)) : 0;
+  const projSeg = (proj && proj.segments > 0) ? Math.min(32, Math.floor(proj.segments)) : 8;
+  const warping = !!(projFn && projAmt > 0);
+
+  const lerp3 = (p, q, t) => [
+    p[0] + (q[0] - p[0]) * t,
+    p[1] + (q[1] - p[1]) * t,
+    p[2] + (q[2] - p[2]) * t
+  ];
+  // 原位置 → 投影位置（沿半径方向推到相对层表面），再按 amount 插值
+  const warp = (p) => {
+    if (!warping) return p;
+    const tp = projFn([p[0], p[1], p[2]]);
+    if (!tp) return p;
+    return lerp3(p, tp, projAmt);
+  };
+
   /* ---- 面：8 件小四面体的 32 个三角面，单色半透明 ---- */
   if (faceOp > minOp) {
     const addFaces = (list, dest) => {
@@ -384,25 +463,6 @@ function build(THREE, opts) {
   if (edgeOp > minOp) {
     const buckets = {};
     const drawnEdge = new Set();
-
-    const proj = o.project || null;
-    const projFn = (proj && typeof proj.fn === 'function') ? proj.fn : null;
-    const projAmt = (proj && isFinite(proj.amount)) ? Math.min(1, Math.max(0, proj.amount)) : 0;
-    const projSeg = (proj && proj.segments > 0) ? Math.min(32, Math.floor(proj.segments)) : 8;
-    const warping = !!(projFn && projAmt > 0);
-
-    const lerp3 = (p, q, t) => [
-      p[0] + (q[0] - p[0]) * t,
-      p[1] + (q[1] - p[1]) * t,
-      p[2] + (q[2] - p[2]) * t
-    ];
-    // 原位置 → 投影位置（沿半径方向推到相对层表面），再按 amount 插值
-    const warp = (p) => {
-      if (!warping) return p;
-      const tp = projFn([p[0], p[1], p[2]]);
-      if (!tp) return p;
-      return lerp3(p, tp, projAmt);
-    };
 
     for (const q of quads) {
       (q.piece.edges || []).forEach((e, ei) => {
@@ -476,13 +536,40 @@ function build(THREE, opts) {
       if (seen.has(key)) return;
       seen.add(key);
       const dot = new THREE.Mesh(sph, mat);
-      dot.position.set(p[0] * R, p[1] * R, p[2] * R);
+      const wp = warp(p);          // 点也参与投影（与棱、标签同一套 warp）
+      dot.position.set(wp[0] * R, wp[1] * R, wp[2] * R);
       if (scale !== 1) dot.scale.setScalar(scale);
       dot.userData.kind = 'dot';
       laneOf(frame).add(dot);
     };
     ['upper', 'lower'].forEach(key => { for (const v of V[key]) addDot(v, 1, key); });
     for (const q of quads) { for (let i = 1; i < 4; i++) addDot(q.pts[i], 0.68, q.frame); }
+  }
+
+  /* ---- 卦名标签：8 个卦件的尖点（= 立方体八卦的 8 个顶点）标出卦名 ----
+     卦名优先取配置里的 piece.trigram（编辑器存档时写入）；
+     老配置没有该字段，就按编辑器同一套规则从棱的虚实推（三爻=S 二爻=R 初爻=T，实=阳 虚=阴）。
+     标签挂在卦尖上，随 RST 投影一起外推到相对层表面（与棱、点同一条 warp）。 */
+  const labelOp = (o.labelOpacity == null) ? dotOp : numOr(o.labelOpacity, dotOp);
+  if (labelOp > minOp && o.labels !== false) {
+    const size = Math.max(0.025, R * 0.19);
+    for (const q of quads) {
+      const name = pieceTrigram(q.piece);
+      if (!name) continue;
+      const tex = labelTexture(THREE, name);
+      if (!tex) continue;
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, transparent: true, opacity: labelOp,
+        depthWrite: false, depthTest: false
+      }));
+      spr.scale.set(size, size, 1);
+      const p = warp(q.pts[0]);      // 卦尖：随投影一起外推
+      spr.position.set(p[0] * R, p[1] * R, p[2] * R);
+      spr.userData.kind = 'label';
+      spr.userData.trigram = name;
+      spr.renderOrder = 6;
+      laneOf(q.frame).add(spr);
+    }
   }
 
   return group;
@@ -514,7 +601,9 @@ root.StarTetraAssembled = {
     socketPoints: socketPoints,
     piecePoints: piecePoints,
     effVariant: effVariant,
-    groupMode: groupMode
+    groupMode: groupMode,
+    GUA_TABLE: GUA_TABLE,
+    pieceTrigram: pieceTrigram
   }
 };
 

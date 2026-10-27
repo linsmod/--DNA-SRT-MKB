@@ -805,18 +805,20 @@ function makeParentProjector(parentType, parentR) {
   };
 }
 
-// 组装星四：8 个小四面体自带 SRT 三色棱 / 实虚线 / 顶点（独立构建器，与直绘互不干扰）
-function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs) {
+// 组装星四：8 个小四面体卦（八卦），棱按 SRT 三色 / 实虚线
+function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs, extra) {
   rigs = rigs || [];                     // 缩略图渲染时不收集自转装置
-  // RST 投影：把棱沿中心向外投到「相对」那一层的表面上（0 = 不投）
+  // RST 投影：把棱 / 点 / 卦名标签沿中心向外投到「相对」那一层的表面上（0 = 不投）
   const amount = (typeof L.proj === 'number') ? Math.min(1, Math.max(0, L.proj)) : 0;
   let project = null;
   const pk = L.relTo;
   if (amount > 0 && pk !== null && pk !== undefined && pk >= 0) {
     const parent = layerDefs[pk];
     const pr = currentRadii[pk] || 0;
-    if (parent && pr >= MIN_VISIBLE_R) {
-      const fn = makeParentProjector(parent.type, pr);
+    if (parent && pr >= MIN_VISIBLE_R && r > 0) {
+      // 投影器在「本层的单位空间」里求值（构建器几何按单位半径建，最后才乘 R），
+      // 所以父层半径要换算成本层单位：pr / r，否则投出来的位置会差一个 R 倍。
+      const fn = makeParentProjector(parent.type, pr / r);
       if (fn) project = { fn, amount, segments: 10 };
     }
   }
@@ -833,6 +835,7 @@ function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs) {
     dualDown: (typeof L.starDual === 'boolean') ? L.starDual : null,
     project,
     splitGroups: stellaSpun(L),
+    ...(extra || {}),
   });
   if (!asm) return;
   group.add(asm);
@@ -1077,7 +1080,7 @@ function thumbUrl(k, L, r) {
   const g = new THREE.Group();
   const color = POLY[L.type].color;
   if (L.type === 'AssembledStar' && StarAsm) {
-    addAssembledLayer(g, L, r, color, o.face, o.edge, o.dot);
+    addAssembledLayer(g, L, r, color, o.face, o.edge, o.dot, null, { labels: false });
   } else {
     addPlainLayer(g, L, r, color, o.face, o.edge, o.dot);
   }
@@ -1136,7 +1139,7 @@ function typeThumbUrl(type) {
   const fake = { type, opacityFace: face, opacityEdge: edge, opacityDot: dot };
   const color = POLY[type].color;
   if (type === 'AssembledStar' && StarAsm) {
-    addAssembledLayer(g, fake, 1, color, face, edge, dot);
+    addAssembledLayer(g, fake, 1, color, face, edge, dot, null, { labels: false });
   } else {
     addPlainLayer(g, fake, 1, color, face, edge, dot);
   }

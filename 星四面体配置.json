@@ -1,6 +1,6 @@
 {
   "schema": "mksr.star-tetrahedron.editor/1",
-  "savedAt": null,
+  "savedAt": "2026-10-27T02:24:53.929Z",
   "pieces": [
     {
       "id": 1,
@@ -30,6 +30,12 @@
           "srt": "S",
           "style": "solid"
         }
+      ],
+      "trigram": "乾",
+      "lines": [
+        1,
+        1,
+        1
       ]
     },
     {
@@ -60,6 +66,12 @@
           "srt": "S",
           "style": "solid"
         }
+      ],
+      "trigram": "艮",
+      "lines": [
+        0,
+        0,
+        1
       ]
     },
     {
@@ -90,6 +102,12 @@
           "srt": "S",
           "style": "dashed"
         }
+      ],
+      "trigram": "坎",
+      "lines": [
+        0,
+        1,
+        0
       ]
     },
     {
@@ -120,6 +138,12 @@
           "srt": "S",
           "style": "dashed"
         }
+      ],
+      "trigram": "震",
+      "lines": [
+        1,
+        0,
+        0
       ]
     },
     {
@@ -150,6 +174,12 @@
           "srt": "S",
           "style": "dashed"
         }
+      ],
+      "trigram": "坤",
+      "lines": [
+        0,
+        0,
+        0
       ]
     },
     {
@@ -180,6 +210,12 @@
           "srt": "S",
           "style": "dashed"
         }
+      ],
+      "trigram": "兑",
+      "lines": [
+        1,
+        1,
+        0
       ]
     },
     {
@@ -210,6 +246,12 @@
           "srt": "S",
           "style": "solid"
         }
+      ],
+      "trigram": "离",
+      "lines": [
+        1,
+        0,
+        1
       ]
     },
     {
@@ -240,6 +282,12 @@
           "srt": "S",
           "style": "solid"
         }
+      ],
+      "trigram": "巽",
+      "lines": [
+        0,
+        1,
+        1
       ]
     }
   ],
@@ -334,8 +382,18 @@
       "axisOffset": 0
     },
     "lower": {
-      "rotationDeg": 180,
+      "rotationDeg": 0,
       "axisOffset": 0
     }
-  }
+  },
+  "bagua": [
+    "乾",
+    "艮",
+    "坎",
+    "震",
+    "坤",
+    "兑",
+    "离",
+    "巽"
+  ]
 }
