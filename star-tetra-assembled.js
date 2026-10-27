@@ -18,6 +18,8 @@
  *     radius: 1,
  *     opacity: { face: 0.06, edge: 0.85, dot: 0.6 },
  *     faceColor: 0xc9a2ff,
+ *     // 可选：RST 投影 —— 把每条棱沿「中心向外」的射线投到相对层的表面上
+ *     project: { fn: (p) => [x, y, z], amount: 1, segments: 8 },
  *   });
  *
  * 返回的 THREE.Group 每个子对象带 userData.kind = 'face' | 'edge' | 'dot'，
@@ -354,10 +356,33 @@ function build(THREE, opts) {
   /* ---- 棱：按 srt|style 分桶，实线 / 虚线各一个 LineSegments ----
      两组（上/下）的中央八面体是同一个，它的 12 条棱会被两件各报一次；
      这里按端点去重，同一根棱只画一次（先到先得：上组优先），
-     否则重合的两条线会因为颜色/虚线相位不同而重影。 */
+     否则重合的两条线会因为颜色/虚线相位不同而重影。
+
+     RST 投影：给了 project.fn 时，把每条棱按比例细分成折线，
+     每个采样点先沿「中心向外」的射线投到相对层表面上，再按 amount 插值。 */
   if (edgeOp > minOp) {
     const buckets = {};
     const drawnEdge = new Set();
+
+    const proj = o.project || null;
+    const projFn = (proj && typeof proj.fn === 'function') ? proj.fn : null;
+    const projAmt = (proj && isFinite(proj.amount)) ? Math.min(1, Math.max(0, proj.amount)) : 0;
+    const projSeg = (proj && proj.segments > 0) ? Math.min(32, Math.floor(proj.segments)) : 8;
+    const warping = !!(projFn && projAmt > 0);
+
+    const lerp3 = (p, q, t) => [
+      p[0] + (q[0] - p[0]) * t,
+      p[1] + (q[1] - p[1]) * t,
+      p[2] + (q[2] - p[2]) * t
+    ];
+    // 原位置 → 投影位置（沿半径方向推到相对层表面），再按 amount 插值
+    const warp = (p) => {
+      if (!warping) return p;
+      const tp = projFn([p[0], p[1], p[2]]);
+      if (!tp) return p;
+      return lerp3(p, tp, projAmt);
+    };
+
     for (const q of quads) {
       (q.piece.edges || []).forEach((e, ei) => {
         const def = EDGE_DEFS[ei];
@@ -371,8 +396,22 @@ function build(THREE, opts) {
         const srt = (e && cols[e.srt]) ? e.srt : 'S';
         const style = (e && e.style === 'dashed') ? 'dashed' : 'solid';
         const key = srt + '|' + style;
-        if (!buckets[key]) buckets[key] = { srt, style, pos: [] };
-        buckets[key].pos.push(a[0] * R, a[1] * R, a[2] * R, b[0] * R, b[1] * R, b[2] * R);
+        if (!buckets[key]) buckets[key] = { srt, style, pos: [], dist: [] };
+        const bucket = buckets[key];
+
+        const nSeg = warping ? projSeg : 1;
+        let acc = 0;
+        for (let s = 0; s < nSeg; s++) {
+          const p0 = warp(nSeg === 1 ? a : lerp3(a, b, s / nSeg));
+          const p1 = warp(nSeg === 1 ? b : lerp3(a, b, (s + 1) / nSeg));
+          const x0 = p0[0] * R, y0 = p0[1] * R, z0 = p0[2] * R;
+          const x1 = p1[0] * R, y1 = p1[1] * R, z1 = p1[2] * R;
+          bucket.pos.push(x0, y0, z0, x1, y1, z1);
+          // 手动累计距离：细分后虚线仍然连续（棱与棱之间各自从 0 开始）
+          const seg = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+          bucket.dist.push(acc, acc + seg);
+          acc += seg;
+        }
       });
     }
     const dashSize = R * 0.026, gapSize = R * 0.017;
@@ -381,6 +420,9 @@ function build(THREE, opts) {
       if (!b.pos.length) return;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+      if (b.style === 'dashed') {
+        geo.setAttribute('lineDistance', new THREE.Float32BufferAttribute(b.dist, 1));
+      }
       const color = new THREE.Color(cols[b.srt]);
       const mat = (b.style === 'dashed')
         ? new THREE.LineDashedMaterial({
@@ -391,7 +433,6 @@ function build(THREE, opts) {
             color, transparent: true, opacity: edgeOp, depthWrite: false
           });
       const ls = new THREE.LineSegments(geo, mat);
-      if (b.style === 'dashed') ls.computeLineDistances();
       ls.userData.kind = 'edge';
       ls.userData.srt = b.srt;
       group.add(ls);
