@@ -214,6 +214,18 @@
   #saves.off #saveCount{display:none;}
   #saves.off .soff{display:block;}
 
+  /* ---------- 2×2×2 组合立方体（主画面左侧，内容 = 主场景那份整体 ×8） ---------- */
+  #cube8Wrap{position:fixed;left:16px;top:50%;transform:translateY(-50%);
+    width:clamp(190px,26vh,300px);background:rgba(22,24,38,.9);
+    border:1px solid var(--line);border-radius:12px;padding:8px;
+    backdrop-filter:blur(10px);box-shadow:0 12px 36px rgba(0,0,0,.45);z-index:8;
+    display:flex;flex-direction:column;gap:6px;}
+  #cube8Wrap .c8head{font-size:11px;font-weight:600;color:#f2f3fa;
+    display:flex;justify-content:space-between;align-items:center;gap:6px;}
+  #cube8Wrap .c8head .c8info{color:var(--faint);font-size:10px;font-weight:400;
+    font-variant-numeric:tabular-nums;}
+  #cube8Canvas{width:100%;aspect-ratio:1/1;display:block;}
+
   /* 面板底部：保存 / 另存为 */
   #saveRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
   #saveBtn,#saveAsBtn{flex:1;padding:8px 0;border-radius:6px;cursor:pointer;
@@ -245,6 +257,11 @@
   <div class="soff">未连接本地服务。<br>终端运行 <b>python server.py</b><br>再打开 http://127.0.0.1:8000/bolatu4.html</div>
 </div>
 
+<div id="cube8Wrap">
+  <div class="c8head"><span id="cube8Title">2×2×2 组合立方体</span><span class="c8info" id="cube8Info">—</span></div>
+  <canvas id="cube8Canvas"></canvas>
+</div>
+
 <div id="panel">
   <div class="ptitle"><span>层栈编辑</span><span id="summary">—</span></div>
   <div id="layerList"></div>
@@ -266,6 +283,7 @@
 <script src="dialog.js"></script>
 <script src="star-tetra-assembled.js"></script>
 <script src="shapes-extra.js"></script>
+<script src="cube8.js"></script>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
 </script>
@@ -1011,6 +1029,7 @@ function refreshScene() {
   if (old) { scene.remove(old); disposeGroup(old); }
   applyFocus();
   updateRadiusLabels();
+  scheduleCube8();          // 左侧立方体跟着换（节流）
 }
 
 function rebuild() {
@@ -1746,6 +1765,8 @@ function init() {
   rebuild();
   bindEvents();
   refreshSaves();
+  initCube8();
+  window.addEventListener('resize', () => { if (cube8) cube8.resize(); });
   requestAnimationFrame(loop);
 }
 
@@ -1889,11 +1910,81 @@ function bindEvents() {
   });
 }
 
+// ---------- 自转：角度累加与姿态套用分离 ----------
+// 角度只按 layerDefs 累加一次（主场景与立方体副本共用同一批 L._spinAngle*），
+// 姿态再分别套到各自的装置上 —— 否则两处都累加会把自转速度翻倍。
+function advanceSpinAngles(dt) {
+  for (const L of layerDefs) {
+    const speed = (typeof L.spin === 'number') ? L.spin : 0;
+    if (!(speed > 0)) continue;
+    const ratio = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
+    const deg = dt * speed * Math.PI / 180;
+    L._spinAngleU = ((L._spinAngleU || 0) + deg * ratio[0]) % (Math.PI * 2);
+    L._spinAngleL = ((L._spinAngleL || 0) + deg * ratio[1]) % (Math.PI * 2);
+  }
+}
+function applySpinRigs(rigs) {
+  if (!rigs || !rigs.length) return;
+  for (const r of rigs) {
+    const L = layerDefs[r.idx];
+    if (!L) continue;
+    if (r.upper) r.upper.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
+    if (r.lower) r.lower.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
+  }
+}
+
+// ---------- 2×2×2 组合立方体（左侧视口；内容 = 主场景那份整体复制 8 份） ----------
+let cube8 = null;          // cube8.js 提供的视口对象
+let cube8Rigs = [];        // 8 份副本各自的星四面体自转装置
+let cube8Timer = null;
+
+function initCube8() {
+  const canvas = document.getElementById('cube8Canvas');
+  if (!canvas || !window.Cube8) return;
+  const grid = 2;                        // 2×2×2 = 8 格（八卦位）；改 4 即 4×4×4 = 64 格
+  cube8 = window.Cube8.create(THREE, {
+    canvas,
+    grid,
+    cell: 1,
+    contentScale: 0.36,     // 内容自身半径按 1 计，缩到半格以内（留出格间隙）
+    factory: () => {
+      // 每格一份「主场景的整体」：同一套层栈、同样的相对半径与投影
+      const g = buildScene(currentRadii);
+      const rigs = g.userData.spinRigs || [];
+      for (const r of rigs) cube8Rigs.push(r);
+      return g;
+    },
+  });
+  const title = document.getElementById('cube8Title');
+  if (title) title.textContent = grid + '×' + grid + '×' + grid + ' 组合立方体';
+  rebuildCube8();
+}
+
+function rebuildCube8() {
+  if (!cube8) return;
+  cube8Rigs = [];
+  cube8.setAll();
+  cube8.setRotation(rotX, rotY + autoRot);
+  cube8.resize();
+  cube8.render();
+  const vis = getVisibleOrder(currentRadii).length;
+  const info = document.getElementById('cube8Info');
+  if (info) info.textContent = (cube8.cellCount || 8) + ' 格 × ' + vis + ' 层';
+}
+
+// 场景变动后节流重建（8 份副本，别跟滑块的每帧输入同步）
+function scheduleCube8() {
+  if (!cube8) return;
+  clearTimeout(cube8Timer);
+  cube8Timer = setTimeout(rebuildCube8, 140);
+}
+
 function loop() {
   const now = performance.now();
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
   if (!dragging && !spaceHeld) autoRot += dt * 0.15;
+  advanceSpinAngles(dt);          // 自转角度只累加一次（主场景与立方体副本共用）
   if (currentGroup) {
     currentGroup.rotation.y = rotY + autoRot;
     currentGroup.rotation.x = rotX;
@@ -1908,26 +1999,19 @@ function loop() {
     // 星四面体自转：上下两组绕同一条 3 重轴反向转。
     // 用累积角度（存在 layerDefs 上，重建场景也能接着当前角度转），
     // 速度 / 转速比实时生效，改参数不会跳位。
-    const rigs = currentGroup.userData.spinRigs;
-    if (rigs && rigs.length) {
-      for (const r of rigs) {
-        const L = layerDefs[r.idx];
-        if (!L) continue;
-        const speed = (typeof L.spin === 'number') ? L.spin : 0;
-        if (!(speed > 0)) continue;
-        const ratio = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
-        const deg = dt * speed * Math.PI / 180;
-        L._spinAngleU = ((L._spinAngleU || 0) + deg * ratio[0]) % (Math.PI * 2);
-        L._spinAngleL = ((L._spinAngleL || 0) + deg * ratio[1]) % (Math.PI * 2);
-        if (r.upper) r.upper.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU);
-        if (r.lower) r.lower.quaternion.setFromAxisAngle(SPIN_AXIS, -L._spinAngleL);
-      }
-    }
+    applySpinRigs(currentGroup.userData.spinRigs);
   }
   camera.position.x = Math.sin(now * 0.0002) * 0.05;
   camera.position.y = Math.cos(now * 0.0003) * 0.05;
   camera.lookAt(0, 0, 0);
   renderer.render(scene, camera);
+
+  // 左侧 2×2×2 组合立方体：与主场景同姿态，副本各自自转
+  if (cube8) {
+    cube8.setRotation(rotX, rotY + autoRot);
+    applySpinRigs(cube8Rigs);
+    cube8.render();
+  }
   requestAnimationFrame(frame);
 }
 let frame = loop;
