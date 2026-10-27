@@ -44,7 +44,7 @@
   .layerCard:hover{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.085);
     box-shadow:0 0 0 1px rgba(255,255,255,.06) inset;}
   .layerCard:hover .lside{border-right-color:rgba(255,255,255,.22);}
-  /* selected：蓝色锁定，主场景钉住该层（hover 别的卡只做临时预览） */
+  /* selected：蓝色锁定，主场景钉住该层（hover 别的缩略图只做临时预览） */
   .layerCard.selected{border-color:rgba(157,192,255,.62);background:rgba(157,192,255,.12);
     box-shadow:0 0 0 1px rgba(157,192,255,.26) inset;}
   .layerCard.selected .lside{border-right-color:rgba(157,192,255,.5);}
@@ -222,7 +222,7 @@
 <div id="hud">
   <div class="title">柏拉图立体 · 相对内嵌</div>
   <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
-  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停层卡 → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>左下载入存档 · 面板底部保存<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停<b>缩略图</b> → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>左下载入存档 · 面板底部保存<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
 </div>
 
 <div id="saves">
@@ -884,7 +884,7 @@ function disposeGroup(g) {
   });
 }
 
-// ---------- hover 聚焦：hover 某层卡片时，其余层在主场景里淡化 ----------
+// ---------- hover 聚焦：hover 某层缩略图时，其余层在主场景里淡化 ----------
 const FOCUS_DIM = 0.18;   // 非聚焦层的淡化倍数
 let focusLayer = -1;      // 当前生效的聚焦层（由 hover / selected 算出）
 let hoverLayer = -1;      // 鼠标悬停的层：临时预览，优先于 selected
@@ -1723,11 +1723,11 @@ function bindEvents() {
     list.scrollTop = list.scrollHeight;
   });
 
-  // 层卡片 hover → 主场景只保留该层（临时预览）；点击 → 选中并钉住；点空白 / Esc 取消
+  // 缩略图 hover → 主场景只保留该层（临时预览）；点击卡片 → 选中并钉住；点空白 / Esc 取消
   const layerListEl = document.getElementById('layerList');
   layerListEl.addEventListener('pointerover', e => {
-    const card = (e.target && e.target.closest) ? e.target.closest('.layerCard') : null;
-    setHoverLayer(card ? Number(card.dataset.idx) : -1);
+    const thumb = (e.target && e.target.closest) ? e.target.closest('.lthumb') : null;
+    setHoverLayer(thumb ? Number(thumb.dataset.idx) : -1);
   });
   layerListEl.addEventListener('pointerleave', () => setHoverLayer(-1));
 
