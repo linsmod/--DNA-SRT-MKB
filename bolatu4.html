@@ -72,6 +72,20 @@
   .leye.on:hover{color:#cfe0ff;}
   .leye.off:hover{color:var(--txt);}
   .leye svg{display:block;width:20px;height:20px;}
+  /* S 模式下：其它层的眼睛被临时禁用（不改动 layerDefs.hidden，退出 S 即恢复） */
+  .leye.solo-off{opacity:.26;filter:grayscale(1);cursor:not-allowed;}
+  .leye.solo-off:hover{border-color:rgba(255,255,255,.18);
+    background:rgba(255,255,255,.07);color:var(--dim);}
+  .leye.off.solo-off:hover{background:rgba(255,255,255,.03);color:var(--faint);}
+  /* 眼睛与缩略图之间：单层模式开关（临时只看这一层），尺寸与眼睛一致 */
+  .lsolo{width:44px;height:30px;border-radius:6px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.05);color:var(--faint);cursor:pointer;padding:0;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:6px;
+    font:700 12px/1 system-ui,sans-serif;letter-spacing:1px;transition:all .15s;}
+  .lsolo:hover{border-color:rgba(157,192,255,.55);background:rgba(157,192,255,.2);
+    color:var(--acc-soft);}
+  .lsolo.on{background:rgba(157,192,255,.34);border-color:rgba(157,192,255,.7);
+    color:#eef4ff;box-shadow:0 0 0 1px rgba(157,192,255,.25) inset;}
   /* 眼睛下方：该层单独渲染的缩略图，点开是类型下拉菜单 */
   .lthumb{position:relative;margin-top:7px;width:44px;height:44px;border-radius:6px;
     overflow:hidden;border:1px solid rgba(255,255,255,.13);background:rgba(6,8,16,.55);
@@ -222,7 +236,7 @@
 <div id="hud">
   <div class="title">柏拉图立体 · 相对内嵌</div>
   <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
-  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停<b>缩略图</b> → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>左下载入存档 · 面板底部保存<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>点 <b>S</b> 单层模式：临时只看该层<br>悬停<b>缩略图</b> → 主场景只看该层<br>点击层卡 → 锁定只看该层（再点取消 · Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>左下载入存档 · 面板底部保存<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
 </div>
 
 <div id="saves">
@@ -889,10 +903,32 @@ const FOCUS_DIM = 0.18;   // 非聚焦层的淡化倍数
 let focusLayer = -1;      // 当前生效的聚焦层（由 hover / selected 算出）
 let hoverLayer = -1;      // 鼠标悬停的层：临时预览，优先于 selected
 let selectedLayer = -1;   // 点击选中的层：鼠标移开后仍然钉住
+let soloLayer = -1;       // 单层模式（S）：临时只看这一层，不改动 layerDefs.hidden
 
 function focusMul(o) {
   if (focusLayer < 0) return 1;
   return (o.userData.layerIndex === focusLayer) ? 1 : FOCUS_DIM;
+}
+
+// 单层模式当前生效的目标层：
+//   - S 所在层自己可见时，以它为目标
+//   - 悬停了别的层的缩略图时，临时切到悬停层（相当于预览那层）
+//   - S 所在层被隐藏 / 半径不足时，S 失效（返回 -1，不做归零处理）
+function soloTargetLayer() {
+  if (soloLayer < 0 || !layerDefs[soloLayer]) return -1;
+  if (isLayerHidden(soloLayer) || !(currentRadii[soloLayer] >= MIN_VISIBLE_R)) return -1;
+  if (hoverLayer >= 0 && hoverLayer !== soloLayer && layerDefs[hoverLayer]
+      && !isLayerHidden(hoverLayer) && currentRadii[hoverLayer] >= MIN_VISIBLE_R) {
+    return hoverLayer;
+  }
+  return soloLayer;
+}
+
+// 单层模式下非目标层的透明度系数（0 = 临时关掉）
+function soloMul(o) {
+  const st = soloTargetLayer();
+  if (st < 0) return 1;
+  return (o.userData.layerIndex === st) ? 1 : 0;
 }
 
 // 给一层生成的整棵子树打上 layerIndex，并记住每个材质的基准 opacity
@@ -918,9 +954,12 @@ function resolveFocus() {
 function applyFocus() {
   focusLayer = resolveFocus();
   if (!currentGroup) return;
+  const st = soloTargetLayer();
   currentGroup.traverse(o => {
     if (!o.material) return;
-    const dim = (focusLayer >= 0 && o.userData.layerIndex !== focusLayer) ? FOCUS_DIM : 1;
+    let dim = (focusLayer >= 0 && o.userData.layerIndex !== focusLayer) ? FOCUS_DIM : 1;
+    // 单层模式：非目标层的透明度直接归零（等效于临时关掉那些眼睛）
+    if (st >= 0 && o.userData.layerIndex !== st) dim = 0;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     mats.forEach(m => {
       if (m.userData._baseOp === undefined) m.userData._baseOp = m.opacity;
@@ -944,9 +983,20 @@ function setSelectedLayer(k) {
   applyFocus();
 }
 
+// 单层模式开关：再点同一个 S = 退出（恢复所有层）
+function setSoloLayer(k) {
+  const next = (k === soloLayer) ? -1 : k;
+  if (next === soloLayer) return;
+  soloLayer = next;
+  rebuildPanel();
+  applyFocus();
+  updateHUD();
+}
+
 function clearFocusState() {
   hoverLayer = -1;
   selectedLayer = -1;
+  soloLayer = -1;
   if (currentGroup) applyFocus();
 }
 
@@ -1317,7 +1367,9 @@ function rebuildPanel() {
   const list = document.getElementById('layerList');
   const radii = currentRadii;
   const visibleIdx = getVisibleOrder(radii);
-  const nVis = visibleIdx.length;
+  // 单层模式下只有 S 所在层算「可见」，auto 参数按单层口径算
+  const soloVis = (soloLayer >= 0) ? visibleIdx.filter(k => k === soloLayer) : visibleIdx;
+  const nVis = soloVis.length;
 
   let html = '';
 
@@ -1326,8 +1378,10 @@ function rebuildPanel() {
     const r = radii[k];
     const hidden = !!L.hidden;
     const isRoot = (L.relTo === null || L.relTo === undefined || L.relTo < 0);
-    const vi = visibleIdx.indexOf(k);
+    const vi = soloVis.indexOf(k);
     const auto = (vi >= 0) ? autoOps(vi, nVis) : AUTO_FALLBACK;
+    // 单层模式：其它层的眼睛被临时禁用（只读状态，退出 S 即恢复）
+    const soloOff = (soloLayer >= 0 && soloLayer !== k);
 
     let cardCls = 'layerCard';
     // 只有几何上不可见（半径太小）才淡化卡片；手动隐藏不弄暗，靠眼睛变色表达
@@ -1337,10 +1391,12 @@ function rebuildPanel() {
 
     html += `<div class="${cardCls}" data-idx="${k}">`;
 
-    // —— 左栏：可见性 + 该层单渲缩略图（独占一列） ——
+    // —— 左栏：可见性 + 单层模式 + 该层单渲缩略图（独占一列） ——
     html += `<div class="lside">`;
-    html += `<button class="leye ${hidden ? 'off' : 'on'}" data-act="vis" data-idx="${k}"
-      title="${hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）'}">${eyeIcon(hidden)}</button>`;
+    html += `<button class="leye ${hidden ? 'off' : 'on'}${soloOff ? ' solo-off' : ''}" data-act="vis" data-idx="${k}"
+      title="${soloOff ? '单层模式下已临时关闭（先关掉 S）' : (hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）')}">${eyeIcon(hidden)}</button>`;
+    html += `<button class="lsolo${soloLayer === k ? ' on' : ''}" data-act="solo" data-idx="${k}"
+      title="${soloLayer === k ? '退出单层模式（Esc 也可退出）' : '单层模式：临时只看这一层'}">S</button>`;
     html += `<div class="lthumb" data-idx="${k}" title="点开切换类型：${POLY[L.type].name}"></div>`;
     html += `</div>`;
 
@@ -1467,10 +1523,22 @@ function bindPanelEvents(list) {
   list.querySelectorAll('[data-act="vis"]').forEach(btn => {
     btn.addEventListener('click', () => {
       const idx = +btn.dataset.idx;
+      // 单层模式下：其它层的眼睛被临时禁用（不改 layerDefs.hidden，退出 S 即恢复）
+      if (soloLayer >= 0 && soloLayer !== idx) return;
       layerDefs[idx].hidden = !layerDefs[idx].hidden;
       hideAllSnapshot = null;   // 手动改动后取消"全隐快照"
+      // 把 S 所在层藏起来会让单层模式空场，直接退出 S
+      if (soloLayer === idx) soloLayer = -1;
       rebuild();
       scheduleSave();
+    });
+  });
+
+  // S 按钮 = 单层模式：临时只看这一层（再点一次退出）
+  list.querySelectorAll('[data-act="solo"]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      setSoloLayer(+btn.dataset.idx);
     });
   });
 
@@ -1590,6 +1658,9 @@ function bindPanelEvents(list) {
       if (selectedLayer === del) selectedLayer = -1;
       else if (selectedLayer > del) selectedLayer -= 1;
       hoverLayer = -1;
+      // 单层模式的目标层被删掉也要跟着挪位
+      if (soloLayer === del) soloLayer = -1;
+      else if (soloLayer > del) soloLayer -= 1;
       rebuild();
       scheduleSave();
     });
@@ -1615,14 +1686,19 @@ function updateRadiusLabels() {
 
 function updateHUD() {
   const radii = currentRadii;
-  const vis = getVisibleOrder(radii);
+  let vis = getVisibleOrder(radii);
+  // 单层模式下只有目标层算可见
+  const st = soloTargetLayer();
+  if (st >= 0) vis = vis.filter(k => k === st);
   const visCount = vis.length;
   document.getElementById('depth').textContent = layerDefs.length;
   document.getElementById('visible').textContent = visCount;
   const innerR = visCount ? radii[vis[visCount - 1]] : 0;
   document.getElementById('innerR').textContent = innerR ? innerR.toFixed(4) : '—';
   let sum = '';
-  if (visCount >= 2) {
+  if (st >= 0) {
+    sum = 'S 单层';
+  } else if (visCount >= 2) {
     const outerR = radii[vis[0]];
     const inner = radii[vis[visCount - 1]];
     sum = '内/外 ' + (inner / outerR * 100).toFixed(1) + '%';
@@ -1731,15 +1807,20 @@ function bindEvents() {
   });
   layerListEl.addEventListener('pointerleave', () => setHoverLayer(-1));
 
-  // 点击：卡内 → 选中该层；面板其它空白（标题 / 卡片间隙 / 内边距）→ 取消
+  // 点击：卡内 → 选中该层（再点一次 = 取消选中）；面板其它空白（标题 / 卡片间隙 / 内边距）→ 取消
   const panelEl = document.getElementById('panel');
   panelEl.addEventListener('click', e => {
     const t = e.target;
     if (!t || !t.closest) return;
-    // 眼睛 / 删除是卡内操作按钮，底部按钮行是全局操作，都不改动选中态
-    if (t.closest('.leye') || t.closest('.ldel') || t.closest('#btnRow')) return;
+    // 眼睛 / 删除 / S 是卡内操作按钮，底部按钮行是全局操作，都不改动选中态
+    if (t.closest('.leye') || t.closest('.ldel') || t.closest('.lsolo') || t.closest('#btnRow')) return;
     const card = t.closest('.layerCard');
-    setSelectedLayer(card ? Number(card.dataset.idx) : -1);
+    if (!card) { setSelectedLayer(-1); return; }
+    const idx = Number(card.dataset.idx);
+    // 滑块 / 下拉 / A 按钮上的点击只做选中，不做「再点一次取消」
+    if (t.closest('input,select,textarea,button')) { setSelectedLayer(idx); return; }
+    // 已经选中的卡片再点一次 = 取消选中
+    setSelectedLayer(idx === selectedLayer ? -1 : idx);
   });
 
   // 类型下拉菜单：选项点击 / 点外面关闭 / 滚动与缩放时关闭
@@ -1793,7 +1874,12 @@ function bindEvents() {
 
   window.addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); spaceHeld = !spaceHeld; return; }
-    if (e.key === 'Escape') { closeTypeMenu(); setSelectedLayer(-1); return; }
+    if (e.key === 'Escape') {
+      closeTypeMenu();
+      setSelectedLayer(-1);
+      if (soloLayer >= 0) setSoloLayer(soloLayer);   // 退出单层模式
+      return;
+    }
     const tag = (e.target && e.target.tagName || '').toUpperCase();
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.key === 'h' || e.key === 'H') toggleHideAll();
@@ -1811,7 +1897,7 @@ function loop() {
     currentGroup.traverse(o => {
       if (o.userData.isHintRing && o.material) {
         const base = o.userData._targetOp || 0.2;
-        o.material.opacity = base * (0.55 + 0.45 * Math.sin(now * 0.002)) * focusMul(o);
+        o.material.opacity = base * (0.55 + 0.45 * Math.sin(now * 0.002)) * focusMul(o) * soloMul(o);
         o.rotation.z += dt * 0.3;
       }
     });
