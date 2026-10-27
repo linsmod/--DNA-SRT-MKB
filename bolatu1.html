@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>柏拉图立体 · 层栈（相对内嵌）</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#050508;
+    font-family:system-ui,sans-serif;color:#ccc;}
+  canvas{display:block;}
+  /* 统一色板：单一强调色 + 中性灰 + 一个危险红（面板 / 存档列表共用） */
+  :root{--acc:#9dc0ff; --acc-soft:#bcd2f6; --txt:#dcdce6; --dim:#a6a6b8;
+    --faint:#82828f; --line:rgba(255,255,255,.14); --danger:#f0a0a0;}
+  #hud{position:fixed;top:16px;left:16px;background:rgba(12,12,22,.85);
+    padding:12px 16px;border-radius:12px;font-size:12px;line-height:1.6;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);
+    pointer-events:none;max-width:260px;}
+  #hud .title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;}
+  #hud .stat{color:#aaa;font-variant-numeric:tabular-nums;}
+  #hud .stat b{color:#8ab4f8;font-weight:600;}
+  #hud .hint{color:#777;font-size:11px;margin-top:8px;line-height:1.5;}
+
+  #panel{position:fixed;top:16px;right:16px;background:rgba(22,24,38,.94);
+    padding:14px 14px;border-radius:12px;font-size:12px;line-height:1.5;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);width:352px;
+    color:#dcdce6;z-index:10;max-height:calc(100vh - 32px);display:flex;
+    flex-direction:column;
+    box-shadow:0 12px 36px rgba(0,0,0,.45);}
+  #panel .ptitle{font-size:12.5px;font-weight:600;color:#f2f3fa;margin-bottom:10px;
+    display:flex;justify-content:space-between;align-items:center;}
+  #panel .ptitle span:last-child{color:var(--faint);font-size:10px;font-weight:400;}
+  #layerList{flex:1;overflow-y:auto;padding-right:2px;margin-right:-2px;}
+  #layerList::-webkit-scrollbar{width:6px;}
+  #layerList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);
+    border-radius:3px;}
+
+  /* 卡片 = 左侧「可见」竖栏 + 右侧内容栏（相邻卡片无缝、直角，边框合并成一条） */
+  .layerCard{display:flex;align-items:stretch;background:rgba(255,255,255,.045);
+    border:1px solid var(--line);border-radius:0;
+    padding:9px 11px 9px 7px;margin-bottom:-1px;cursor:pointer;
+    transition:border-color .15s,background .15s,box-shadow .15s,opacity .15s;}
+  .layerCard:last-child{margin-bottom:0;}
+  /* hover：整卡提亮，竖栏分界线跟着亮 */
+  .layerCard:hover{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.085);
+    box-shadow:0 0 0 1px rgba(255,255,255,.06) inset;}
+  .layerCard:hover .lside{border-right-color:rgba(255,255,255,.22);}
+  /* selected：蓝色锁定，主场景钉住该层（hover 别的缩略图只做临时预览） */
+  .layerCard.selected{border-color:rgba(157,192,255,.62);background:rgba(157,192,255,.12);
+    box-shadow:0 0 0 1px rgba(157,192,255,.26) inset;}
+  .layerCard.selected .lside{border-right-color:rgba(157,192,255,.5);}
+  .layerCard.selected .lhead .lname{color:#eef4ff;}
+  .layerCard.selected .lradius{color:rgba(213,229,255,.85);}
+  /* 半径不足（不可见）才整体淡化；手动隐藏不变暗，只靠眼睛变色 + 右栏停用 */
+  .layerCard.hidden-layer{opacity:0.35;}
+  .layerCard.user-hidden .lbody{pointer-events:none;}
+  /* 删除按钮保持可用，隐藏的层照样能删 */
+  .layerCard.user-hidden .lhead .ldel{pointer-events:auto;}
+  .lside{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;
+    padding:0 9px 0 2px;margin-right:10px;
+    border-right:1px solid rgba(255,255,255,.1);}
+  .lbody{flex:1 1 auto;min-width:0;}
+  /* 眼睛：放大并独占左栏，卡片再高也只有它在顶部 */
+  .leye{width:44px;height:30px;border-radius:6px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.07);color:var(--dim);cursor:pointer;padding:0;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    transition:all .15s;}
+  .leye.on{color:var(--acc);border-color:rgba(157,192,255,.42);
+    background:rgba(157,192,255,.16);}
+  .leye.off{color:var(--faint);border-color:rgba(255,255,255,.1);
+    background:rgba(255,255,255,.03);}
+  .leye:hover{border-color:rgba(157,192,255,.55);background:rgba(157,192,255,.22);}
+  .leye.on:hover{color:#cfe0ff;}
+  .leye.off:hover{color:var(--txt);}
+  .leye svg{display:block;width:20px;height:20px;}
+  /* S 模式下：其它层的眼睛被临时禁用（不改动 layerDefs.hidden，退出 S 即恢复） */
+  .leye.solo-off{opacity:.26;filter:grayscale(1);cursor:not-allowed;}
+  .leye.solo-off:hover{border-color:rgba(255,255,255,.18);
+    background:rgba(255,255,255,.07);color:var(--dim);}
+  .leye.off.solo-off:hover{background:rgba(255,255,255,.03);color:var(--faint);}
+  /* 眼睛与缩略图之间：单层模式开关（临时只看这一层），尺寸与眼睛一致 */
+  .lsolo{width:44px;height:30px;border-radius:6px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.05);color:var(--faint);cursor:pointer;padding:0;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:6px;
+    font:700 12px/1 system-ui,sans-serif;letter-spacing:1px;transition:all .15s;}
+  .lsolo:hover{border-color:rgba(157,192,255,.55);background:rgba(157,192,255,.2);
+    color:var(--acc-soft);}
+  .lsolo.on{background:rgba(157,192,255,.34);border-color:rgba(157,192,255,.7);
+    color:#eef4ff;box-shadow:0 0 0 1px rgba(157,192,255,.25) inset;}
+  /* 眼睛下方：该层单独渲染的缩略图，点开是类型下拉菜单 */
+  .lthumb{position:relative;margin-top:7px;width:44px;height:44px;border-radius:6px;
+    overflow:hidden;border:1px solid rgba(255,255,255,.13);background:rgba(6,8,16,.55);
+    flex-shrink:0;cursor:pointer;transition:border-color .15s,opacity .15s;}
+  .lthumb img{width:100%;height:100%;display:block;}
+  .lthumb.empty{background:rgba(255,255,255,.02);border-style:dashed;}
+  .lthumb:hover{border-color:rgba(157,192,255,.6);}
+  .lthumb::after{content:'';position:absolute;right:3px;bottom:3px;width:0;height:0;
+    border-left:4px solid transparent;border-right:4px solid transparent;
+    border-top:4px solid rgba(255,255,255,.6);opacity:0;transition:opacity .15s;
+    pointer-events:none;}
+  .lthumb:hover::after{opacity:1;}
+  .layerCard.selected .lthumb{border-color:rgba(157,192,255,.5);}
+  .layerCard.user-hidden .lthumb{opacity:.45;}
+  .lhead{display:flex;justify-content:space-between;align-items:center;
+    font-size:11.5px;margin-bottom:7px;gap:4px;}
+  .lhead .lname{color:var(--txt);font-weight:600;flex-shrink:0;}
+  .lhead .lradius{color:var(--dim);font-variant-numeric:tabular-nums;
+    font-size:10.5px;flex:1;text-align:right;}
+  .lhead .ldel{width:19px;height:19px;border-radius:4px;border:none;
+    background:rgba(240,160,160,.18);color:var(--danger);cursor:pointer;font-size:12px;
+    line-height:1;padding:0;display:flex;align-items:center;
+    justify-content:center;transition:background .15s;flex-shrink:0;}
+  .lhead .ldel:hover{background:rgba(240,160,160,.4);}
+  .lhead .ldel:disabled{opacity:.3;cursor:not-allowed;}
+
+  /* 类型下拉菜单（点缩略图展开，挂在 body 上避免被列表裁切；项之间无缝直角） */
+  #typeMenu{position:fixed;z-index:60;min-width:208px;padding:0;border-radius:0;
+    background:rgba(56,61,90,.97);border:1px solid rgba(255,255,255,.3);
+    box-shadow:0 18px 48px rgba(0,0,0,.55);
+    backdrop-filter:blur(12px);display:none;overflow:hidden;}
+  #typeMenu.open{display:block;}
+  .mitem{display:flex;align-items:center;gap:10px;width:100%;padding:7px 9px 7px 8px;
+    border:none;border-bottom:1px solid rgba(255,255,255,.09);
+    background:rgba(255,255,255,.05);border-radius:0;color:#eef0f8;
+    font:inherit;font-size:12px;text-align:left;cursor:pointer;margin:0;
+    transition:background .12s;}
+  .mitem:last-child{border-bottom:none;}
+  .mitem:hover{background:rgba(255,255,255,.18);}
+  .mitem img{width:30px;height:30px;border-radius:6px;display:block;flex-shrink:0;
+    background:rgba(14,18,32,.9);border:1px solid rgba(255,255,255,.22);}
+  .mitem .mname{flex:1;white-space:nowrap;}
+  .mitem.sel{background:rgba(157,192,255,.34);color:#fff;font-weight:600;
+    box-shadow:inset 3px 0 0 rgba(157,192,255,.9);}
+  .mitem.sel::after{content:'✓';color:#dce9ff;font-size:12px;font-weight:700;}
+
+  .lrow{display:flex;flex-direction:column;gap:6px;}
+  .lrowLine{display:flex;align-items:center;gap:7px;}
+  .lrowLine label{font-size:10.5px;color:var(--dim);width:60px;flex-shrink:0;}
+  .lrowLine input[type=range]{flex:1;accent-color:var(--acc);margin:0;height:12px;}
+  .lrowLine .lval{color:var(--acc-soft);font-size:10.5px;min-width:42px;
+    text-align:right;font-variant-numeric:tabular-nums;}
+  .lrowLine .lval.auto{color:var(--faint);font-style:italic;}
+  .lrowLine .lauto{width:19px;height:17px;border-radius:3px;border:none;
+    background:rgba(255,255,255,.09);color:var(--faint);cursor:pointer;font-size:9px;
+    line-height:1;padding:0;display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;transition:all .12s;}
+  .lrowLine .lauto:hover{background:rgba(255,255,255,.2);color:var(--txt);}
+  .lrowLine .lauto.on{background:rgba(157,192,255,.3);color:var(--acc);}
+  .lrowLine select{flex:1;min-width:0;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.2);color:var(--txt);border-radius:5px;
+    font-size:11px;padding:4px 6px;outline:none;cursor:pointer;font-family:inherit;}
+  .lrowLine select:focus{border-color:rgba(157,192,255,.7);}
+  .lrowLine select option{background:#22243a;color:#e4e4f0;}
+
+  /* 面 / 边 / 点：统一强调色 + 单色形状标记区分 */
+  .lops{margin-top:6px;gap:4px;padding-top:6px;
+    border-top:1px solid rgba(255,255,255,.12);}
+  .lops .lrowLine label{width:16px;font-weight:600;color:var(--dim);}
+  .lops .mk{width:9px;height:9px;flex-shrink:0;border-radius:2px;
+    border:1.5px solid var(--acc);opacity:.9;}
+  .lops .mk-face{background:rgba(157,192,255,.32);}
+  .lops .mk-edge{height:2px;border:none;border-radius:1px;background:var(--acc);}
+  .lops .mk-dot{width:6px;height:6px;border:none;border-radius:50%;
+    background:var(--acc);margin:0 1px;}
+  .lops .lval{color:var(--acc-soft);}
+  .lops .lval.auto{color:var(--faint);font-style:italic;}
+
+  #btnRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
+  #addBtn{flex:1;padding:8px;border:1px dashed rgba(255,255,255,.28);
+    background:rgba(255,255,255,.03);color:var(--dim);border-radius:6px;font-size:11.5px;
+    cursor:pointer;transition:all .15s;}
+  #addBtn:hover{background:rgba(255,255,255,.1);color:var(--txt);
+    border-color:rgba(255,255,255,.42);}
+  #hideAllBtn{width:88px;flex-shrink:0;padding:8px 0;border-radius:6px;
+    border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.03);
+    color:var(--dim);font-size:11.5px;cursor:pointer;transition:all .15s;}
+  #hideAllBtn:hover{background:rgba(157,192,255,.18);color:var(--acc);
+    border-color:rgba(157,192,255,.45);}
+  #hideAllBtn.allhidden{background:rgba(157,192,255,.22);color:var(--acc);
+    border-color:rgba(157,192,255,.5);}
+  #resetBtn{width:40px;flex-shrink:0;padding:8px 0;border-radius:6px;
+    border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.03);
+    color:var(--dim);font-size:12px;cursor:pointer;transition:all .15s;}
+  #resetBtn:hover{background:rgba(255,255,255,.13);color:var(--txt);
+    border-color:rgba(255,255,255,.32);}
+
+  /* ---------- 存档列表（左下角，[缩略图 文件名]，点击加载） ---------- */
+  #saves{position:fixed;left:16px;bottom:16px;width:252px;max-height:56vh;
+    display:flex;flex-direction:column;background:rgba(22,24,38,.94);
+    border:1px solid var(--line);border-radius:12px;padding:10px;
+    backdrop-filter:blur(10px);box-shadow:0 12px 36px rgba(0,0,0,.45);z-index:9;
+    font-size:12px;line-height:1.5;color:var(--txt);}
+  #saves .shead{font-size:11.5px;font-weight:600;color:#f2f3fa;margin-bottom:8px;
+    display:flex;justify-content:space-between;align-items:center;gap:6px;}
+  #saves .shead .shint{font-weight:400;font-size:10px;color:var(--faint);}
+  #saveList{flex:1;overflow-y:auto;}
+  #saveList::-webkit-scrollbar{width:6px;}
+  #saveList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px;}
+  .sitem{display:flex;align-items:center;gap:9px;width:100%;padding:6px 7px;
+    border:1px solid var(--line);border-radius:0;background:rgba(255,255,255,.045);
+    color:var(--txt);font:inherit;font-size:11.5px;text-align:left;cursor:pointer;
+    margin-bottom:-1px;transition:background .12s,border-color .12s;}
+  .sitem:last-child{margin-bottom:0;}
+  .sitem:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.3);}
+  .sitem.cur{background:rgba(157,192,255,.2);border-color:rgba(157,192,255,.6);color:#fff;}
+  .sitem img{width:44px;height:28px;object-fit:cover;display:block;flex-shrink:0;
+    background:rgba(6,8,16,.7);border:1px solid rgba(255,255,255,.14);}
+  .sitem .snoimg{width:44px;height:28px;flex-shrink:0;background:rgba(255,255,255,.05);
+    border:1px dashed rgba(255,255,255,.16);}
+  .sitem .sname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;}
+  .sempty{font-size:11px;color:var(--faint);padding:6px 2px;}
+  .soff{display:none;font-size:11px;color:var(--faint);line-height:1.6;padding:6px 2px;}
+  #saves.off #saveList{display:none;}
+  #saves.off #saveCount{display:none;}
+  #saves.off .soff{display:block;}
+
+  /* 面板底部：保存 / 另存为 */
+  #saveRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
+  #saveBtn,#saveAsBtn{flex:1;padding:8px 0;border-radius:6px;cursor:pointer;
+    font-size:11.5px;font-family:inherit;transition:all .15s;}
+  #saveBtn{border:1px solid rgba(157,192,255,.5);background:rgba(157,192,255,.2);
+    color:#e2ecff;}
+  #saveBtn:hover{background:rgba(157,192,255,.32);border-color:rgba(157,192,255,.7);}
+  #saveAsBtn{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);
+    color:var(--dim);}
+  #saveAsBtn:hover{background:rgba(255,255,255,.12);color:var(--txt);
+    border-color:rgba(255,255,255,.34);}
+  #saveBtn:disabled,#saveAsBtn:disabled{opacity:.45;cursor:not-allowed;}
+
+  #error{position:fixed;inset:0;display:none;align-items:center;
+    justify-content:center;background:#050508;color:#f88;padding:24px;
+    text-align:center;z-index:100;}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="title">柏拉图立体 · 相对内嵌</div>
+  <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
+  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>点 <b>S</b> 单层模式：临时只看该层<br>悬停<b>缩略图</b> → 主场景只看该层<br>点击层卡 → 锁定只看该层（再点取消 · Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>左下载入存档 · 面板底部保存<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+</div>
+
+<div id="saves">
+  <div class="shead"><span>存档</span><span class="shint" id="saveCount">bolatu-saved/</span></div>
+  <div id="saveList"></div>
+  <div class="soff">未连接本地服务。<br>终端运行 <b>python server.py</b><br>再打开 http://127.0.0.1:8000/bolatu4.html</div>
+</div>
+
+<div id="panel">
+  <div class="ptitle"><span>层栈编辑</span><span id="summary">—</span></div>
+  <div id="layerList"></div>
+  <div id="btnRow">
+    <button id="addBtn">+ 添加层</button>
+    <button id="hideAllBtn" title="一键隐藏全部层 / 恢复（H 键）">隐藏全部</button>
+    <button id="resetBtn" title="恢复默认并清除本地保存">↺</button>
+  </div>
+  <div id="saveRow">
+    <button id="saveBtn" title="保存到 bolatu-saved/（需要 python server.py）">保存</button>
+    <button id="saveAsBtn" title="另存为新名字">另存为</button>
+  </div>
+</div>
+
+<div id="typeMenu"></div>
+
+<div id="error">加载失败：请检查浏览器是否支持 WebGL / 网络是否可访问 unpkg.com</div>
+
+<script src="dialog.js"></script>
+<script src="star-tetra-assembled.js"></script>
+<script src="shapes-extra.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// 组装式星四面体（经典脚本，配置 JSON 内嵌在 star-tetra-assembled.js 里）
+// 未加载时降级：该类型按直绘星四渲染，页面不会挂
+const StarAsm = (typeof window !== 'undefined' && window.StarTetraAssembled) || null;
+
+// ---------- 几何数据 ----------
+const SQRT3 = Math.sqrt(3);
+const PHI = (1 + Math.sqrt(5)) / 2;
+const INV_PHI = 1 / PHI;
+
+const POLY = {
+  Tetrahedron:          { name:'四面体',  short:'四面', color:0xff5566 },
+  Cube:                 { name:'立方体',  short:'立方', color:0xffaa33 },
+  Octahedron:           { name:'八面体',  short:'八面', color:0x88dd44 },
+  Dodecahedron:         { name:'十二面体',short:'十二', color:0x44dddd },
+  Icosahedron:          { name:'二十面体',short:'二十', color:0xaa66ff },
+  StellatedTetrahedron: { name:'星四面体',short:'星四', color:0xffcc33 },
+  // 组装式星四面体：8 个小四面体拼合，棱按 SRT 三色 / 实虚线（见 star-tetra-assembled.js）
+  AssembledStar:        { name:'组装星四',short:'组装', color:0xc9a2ff },
+};
+
+// 外部形状插件（shapes-extra.js 等，window.BolatuShapes = [ {key,name,short,color,...} ]）
+const EXTRA_SHAPE = {};   // key → 插件原始描述（ball / edges / dots / makeGeo …）
+function registerExtraShapes(list) {
+  if (!Array.isArray(list)) return;
+  for (const s of list) {
+    if (!s || !s.key || POLY[s.key]) continue;      // 不覆盖内置类型
+    POLY[s.key] = {
+      name: s.name || s.key,
+      short: s.short || String(s.name || s.key).slice(0, 2),
+      color: (s.color == null) ? 0xffffff : s.color,
+    };
+    EXTRA_SHAPE[s.key] = s;
+  }
+}
+registerExtraShapes(typeof window !== 'undefined' ? window.BolatuShapes : null);
+
+const NAMES = Object.keys(POLY);
+
+function normalize3(v){const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];}
+
+const RAW_VERTS = {
+  Tetrahedron: [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]],
+  Cube: [[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1]],
+  Octahedron: [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],
+  Dodecahedron: [
+    [1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1],
+    [0,INV_PHI,PHI],[0,INV_PHI,-PHI],[0,-INV_PHI,PHI],[0,-INV_PHI,-PHI],
+    [INV_PHI,PHI,0],[INV_PHI,-PHI,0],[-INV_PHI,PHI,0],[-INV_PHI,-PHI,0],
+    [PHI,0,INV_PHI],[PHI,0,-INV_PHI],[-PHI,0,INV_PHI],[-PHI,0,-INV_PHI]
+  ],
+  Icosahedron: [
+    [0,1,PHI],[0,1,-PHI],[0,-1,PHI],[0,-1,-PHI],
+    [1,PHI,0],[1,-PHI,0],[-1,PHI,0],[-1,-PHI,0],
+    [PHI,0,1],[PHI,0,-1],[-PHI,0,1],[-PHI,0,-1]
+  ],
+  StellatedTetrahedron: [
+    [1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1],
+    [-1,-1,-1],[-1,1,1],[1,-1,1],[1,1,-1]
+  ],
+  // 组装星四外轮廓与直绘星四同形，顶点同取立方体角
+  AssembledStar: [
+    [1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1],
+    [-1,-1,-1],[-1,1,1],[1,-1,1],[1,1,-1]
+  ]
+};
+// 外部形状补进顶点表（球面类给空数组，靠 ball 规则走内切/外接球）
+for (const k of Object.keys(EXTRA_SHAPE)) {
+  RAW_VERTS[k] = Array.isArray(EXTRA_SHAPE[k].verts) ? EXTRA_SHAPE[k].verts : [];
+}
+
+const VERTS_UNIT = {};
+for (const n of NAMES) VERTS_UNIT[n] = (RAW_VERTS[n] || []).map(normalize3);
+
+const DUAL = {
+  Tetrahedron:'Tetrahedron', Cube:'Octahedron', Octahedron:'Cube',
+  Dodecahedron:'Icosahedron', Icosahedron:'Dodecahedron',
+  StellatedTetrahedron:'StellatedTetrahedron',
+  AssembledStar:'AssembledStar',
+};
+const FACE_DIST = {
+  Tetrahedron: 1/3, Cube: 1/SQRT3, Octahedron: 1/SQRT3,
+  Dodecahedron: 0.7946544722917661, Icosahedron: 0.7946544722917661,
+  StellatedTetrahedron: 1/3,
+  AssembledStar: 1/3,   // 与直绘星四同口径：面到大四面体面的距离
+};
+for (const k of Object.keys(EXTRA_SHAPE)) {
+  DUAL[k] = EXTRA_SHAPE[k].dual || k;
+  FACE_DIST[k] = (typeof EXTRA_SHAPE[k].faceDist === 'number') ? EXTRA_SHAPE[k].faceDist : 1;
+}
+
+// 是球面的类型：没有顶点可投影，嵌套一律按「外接球 / 内切球」算
+function isBall(type) {
+  return !!(EXTRA_SHAPE[type] && EXTRA_SHAPE[type].ball);
+}
+
+const SCALE_CACHE = {};
+const PROJ_CACHE = {};
+for (const o of NAMES) {
+  for (const i of NAMES) {
+    let sMax = Infinity;
+    let maxProj = 0;
+    if (isBall(o)) {
+      // 球作父：任何形状的外接球半径都是 1，缩到 1 时顶点正好落在球面上（内接）
+      sMax = 1;
+      maxProj = 1;
+    } else if (isBall(i)) {
+      // 球作子：球半径 = 到父面的距离 → 内切于父面
+      sMax = FACE_DIST[o];
+      maxProj = 0;
+    } else {
+      const faceNormals = VERTS_UNIT[DUAL[o]];
+      const d = FACE_DIST[o];
+      const innerVerts = VERTS_UNIT[i];
+      for (const n of faceNormals) {
+        let mp = 0;
+        for (const v of innerVerts) {
+          const p = n[0]*v[0] + n[1]*v[1] + n[2]*v[2];
+          if (p > mp) mp = p;
+        }
+        if (mp > maxProj) maxProj = mp;
+        if (mp > 1e-9) {
+          const s = d / mp;
+          if (s < sMax) sMax = s;
+        }
+      }
+    }
+    SCALE_CACHE[`${o}|${i}`] = sMax;
+    PROJ_CACHE[`${o}|${i}`] = maxProj;
+  }
+}
+
+// ---------- 层栈定义 ----------
+const MIN_VISIBLE_R = 0.02;
+const MAX_LAYERS = 12;
+// 低于此值的透明度视为完全不可见，直接跳过创建，避免渲染残影
+const MIN_OPACITY = 0.001;
+
+const DEFAULT_LAYERS = [
+  { type: 'Cube',                 padding: 0, relTo: null, opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
+  { type: 'StellatedTetrahedron', padding: 0, relTo: 0,    opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
+  { type: 'Dodecahedron',         padding: 0, relTo: 1,    opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
+  { type: 'Icosahedron',          padding: 0, relTo: 2,    opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false },
+];
+
+const OPS_DEF = [
+  { key: 'opacityFace', kind: 'face', act: 'op-face', label: '面' },
+  { key: 'opacityEdge', kind: 'edge', act: 'op-edge', label: '边' },
+  { key: 'opacityDot',  kind: 'dot',  act: 'op-dot',  label: '点' },
+];
+
+let layerDefs = DEFAULT_LAYERS.map(o => ({ ...o }));
+
+function autoOps(vi, nVis) {
+  const t = nVis > 1 ? vi / (nVis - 1) : 0.5;
+  return {
+    face: 0.025 + 0.075 * t,
+    edge: 0.32  + 0.55  * t,
+    dot:  0.45  + 0.45  * t,
+  };
+}
+const AUTO_FALLBACK = autoOps(0.5, 2);
+
+function randomType(prev) {
+  let t, g = 0;
+  do { t = NAMES[Math.floor(Math.random() * NAMES.length)]; g++; }
+  while (t === prev && g < 20);
+  return t;
+}
+
+function computeRadii() {
+  const n = layerDefs.length;
+  const radii = new Array(n).fill(null);
+  const state = new Array(n).fill(0);
+
+  function resolve(k) {
+    if (state[k] === 2) return radii[k];
+    if (state[k] === 1) return 0;
+    state[k] = 1;
+    const L = layerDefs[k];
+    let r;
+    if (L.relTo === null || L.relTo === undefined || L.relTo < 0) {
+      r = 1.0;
+    } else if (L.relTo >= n || L.relTo === k) {
+      r = 0;
+    } else {
+      const pr = resolve(L.relTo);
+      if (pr < MIN_VISIBLE_R) {
+        r = 0;
+      } else {
+        const sMax = SCALE_CACHE[`${layerDefs[L.relTo].type}|${L.type}`];
+        r = pr * sMax * (1 - L.padding);
+        if (!isFinite(r) || r < 0) r = 0;
+      }
+    }
+    radii[k] = Math.max(0, r);
+    state[k] = 2;
+    return radii[k];
+  }
+
+  for (let k = 0; k < n; k++) resolve(k);
+  return radii;
+}
+
+function isLayerHidden(k) {
+  return !!(layerDefs[k] && layerDefs[k].hidden);
+}
+
+// 参与渲染的层：既没有被手动隐藏，半径也达到可见阈值
+// 手动隐藏不影响半径计算（几何层级保持不变），只影响是否生成 mesh
+function getVisibleOrder(radii) {
+  const vis = [];
+  for (let k = 0; k < radii.length; k++) {
+    if (isLayerHidden(k)) continue;
+    if (radii[k] >= MIN_VISIBLE_R) vis.push(k);
+  }
+  vis.sort((a, b) => radii[b] - radii[a]);
+  return vis;
+}
+
+// ---------- 本地存储 ----------
+const STORE_KEY = 'platonic-stack-v1';
+let saveTimer = null;
+
+function clampNum(v, lo, hi, dflt) {
+  const n = Number(v);
+  if (!isFinite(n)) return dflt;
+  return Math.min(hi, Math.max(lo, n));
+}
+function numOrNull(v) {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!isFinite(n)) return null;
+  return Math.min(1, Math.max(0, n));
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 250);
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      v: 1,
+      layers: layerDefs,
+      cam: { rotX, rotY, z: camZ },
+    }));
+  } catch (_) {}
+}
+
+// 读一份 {layers, cam} 数据（localStorage 或服务器存档共用）：规范化后写进 layerDefs
+function applyStateData(data) {
+  if (!data || !Array.isArray(data.layers) || !data.layers.length) return false;
+
+  const out = [];
+  for (const L of data.layers) {
+    if (!L || typeof L !== 'object' || !POLY[L.type]) continue;
+    const rel = (L.relTo === null || L.relTo === undefined || !isFinite(Number(L.relTo)) || Number(L.relTo) < 0)
+      ? null : Math.floor(Number(L.relTo));
+    out.push({
+      type: L.type,
+      padding: clampNum(L.padding, 0, 0.3, 0),
+      relTo: rel,
+      opacityFace: numOrNull(L.opacityFace),
+      opacityEdge: numOrNull(L.opacityEdge),
+      opacityDot:  numOrNull(L.opacityDot),
+      proj: clampNum(L.proj, 0, 1, 0),   // RST 投影强度（仅组装星四用）
+      spin: clampNum(L.spin, 0, 60, 0),  // 上下组反向自转速度 °/s（星四面体系）
+      spinRatio: (L.spinRatio === '2:3') ? '2:3' : '1:1',
+      hidden: !!L.hidden,
+    });
+    if (out.length >= MAX_LAYERS) break;
+  }
+  if (!out.length) return false;
+
+  for (let i = 0; i < out.length; i++) {
+    const r = out[i].relTo;
+    if (r !== null && (r >= out.length || r === i)) out[i].relTo = null;
+  }
+  layerDefs = out;
+
+  if (data.cam && typeof data.cam === 'object') {
+    if (isFinite(data.cam.rotX)) rotX = Math.min(1.3, Math.max(-1.3, data.cam.rotX));
+    if (isFinite(data.cam.rotY)) rotY = data.cam.rotY;
+    if (isFinite(data.cam.z)) camZ = Math.min(8, Math.max(2, data.cam.z));
+  }
+  return true;
+}
+
+function loadState() {
+  let raw;
+  try { raw = localStorage.getItem(STORE_KEY); } catch (_) { return; }
+  if (!raw) return;
+
+  let data;
+  try { data = JSON.parse(raw); } catch (_) { return; }
+  applyStateData(data);
+}
+
+function clearState() {
+  try { localStorage.removeItem(STORE_KEY); } catch (_) {}
+}
+
+// ---------- Three.js ----------
+let renderer, scene, camera;
+let currentGroup = null;
+let rotY = 0.3, rotX = 0.15, camZ = 3.4;
+let dragging = false, moved = false; let spaceHeld = true;
+let last = { x:0, y:0 };
+let autoRot = 0;
+let lastT = performance.now();
+let currentRadii = [];
+
+// 星四面体上下两组的 3 重轴（顶点穿过对面中心的方向）就是立方体体对角线
+const SPIN_AXIS = new THREE.Vector3(1, 1, 1).normalize();
+const SPIN_RATIO = { '1:1': [1, 1], '2:3': [2, 3] };
+const STELLA_UP_VERTS = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+const STELLA_DOWN_VERTS = [[-1,-1,-1],[-1,1,1],[1,-1,1],[1,1,-1]];
+
+// 自转配置：speed 为 °/秒，ratio 决定上组 : 下组 的转速比（下组反向）
+function spinSpec(L) {
+  const speed = (typeof L.spin === 'number') ? L.spin : 0;
+  if (!(speed > 0)) return null;
+  const r = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
+  return { speed, a: r[0], b: r[1] };
+}
+
+// 是否处于「已拆组」状态：在转，或曾经转过（残留角度）。
+// 拆组后几何保持标准姿态、姿态全靠四元数，因此 0 ↔ 转 之间完全连续。
+function stellaSpun(L) {
+  return !!((L.spin > 0) || L._spinAngleU || L._spinAngleL);
+}
+
+// 单个四面体（4 顶点）的几何，与 makeStellatedTetrahedronGeo 里的顶点/索引口径一致
+function makeStellaPartGeo(baseVerts, s) {
+  const verts = [], idx = [];
+  const pushV = v => { verts.push(v[0] * s, v[1] * s, v[2] * s); return verts.length / 3 - 1; };
+  const i0 = baseVerts.map(pushV);
+  idx.push(i0[1], i0[2], i0[3]);
+  idx.push(i0[0], i0[3], i0[2]);
+  idx.push(i0[0], i0[2], i0[1]);
+  idx.push(i0[0], i0[1], i0[3]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeStellatedTetrahedronGeo(r) {
+  const s = r / SQRT3;
+  const A = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]].map(v => [v[0]*s, v[1]*s, v[2]*s]);
+  const B = [[-1,-1,-1],[-1,1,1],[1,-1,1],[1,1,-1]].map(v => [v[0]*s, v[1]*s, v[2]*s]);
+  const verts = [];
+  const idx = [];
+  const pushV = (v) => { verts.push(v[0], v[1], v[2]); return verts.length/3 - 1; };
+  const aIdx = A.map(pushV);
+  const bIdx = B.map(pushV);
+  idx.push(aIdx[1], aIdx[2], aIdx[3]);
+  idx.push(aIdx[0], aIdx[3], aIdx[2]);
+  idx.push(aIdx[0], aIdx[2], aIdx[1]);
+  idx.push(aIdx[0], aIdx[1], aIdx[3]);
+  idx.push(bIdx[1], bIdx[2], bIdx[3]);
+  idx.push(bIdx[0], bIdx[3], bIdx[2]);
+  idx.push(bIdx[0], bIdx[2], bIdx[1]);
+  idx.push(bIdx[0], bIdx[1], bIdx[3]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeGeo(type, r) {
+  // 外部插件形状自己出几何
+  const ex = EXTRA_SHAPE[type];
+  if (ex && typeof ex.makeGeo === 'function') return ex.makeGeo(THREE, r);
+
+  switch (type) {
+    case 'Tetrahedron':  return new THREE.TetrahedronGeometry(r);
+    case 'Cube':         { const s = r * 2 / SQRT3; return new THREE.BoxGeometry(s, s, s); }
+    case 'Octahedron':   return new THREE.OctahedronGeometry(r);
+    case 'Dodecahedron': return new THREE.DodecahedronGeometry(r);
+    case 'Icosahedron':  return new THREE.IcosahedronGeometry(r);
+    case 'StellatedTetrahedron': return makeStellatedTetrahedronGeo(r);
+    // 组装星四走 buildAssembledLayer；这里的几何只用于「点」与降级兜底
+    case 'AssembledStar': return makeStellatedTetrahedronGeo(r);
+  }
+}
+
+// 直绘星四面体 + 自转：拆成上下两个四面体，各自一个 Group（供 loop 反向旋转）
+function addStellaSpinLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs, spin) {
+  const s = r / SQRT3;
+  const up = new THREE.Group();
+  const down = new THREE.Group();
+  up.name = 'stella-upper';
+  down.name = 'stella-lower';
+
+  [[STELLA_UP_VERTS, up], [STELLA_DOWN_VERTS, down]].forEach(([base, dest]) => {
+    const geo = makeStellaPartGeo(base, s);
+
+    if (faceOp > MIN_OPACITY) {
+      const faceMat = new THREE.MeshPhongMaterial({
+        color, transparent: true, opacity: faceOp * 0.7,
+        side: THREE.DoubleSide, depthWrite: false,
+        shininess: 60, emissive: color, emissiveIntensity: 0.06,
+      });
+      dest.add(new THREE.Mesh(geo, faceMat));
+    }
+
+    if (edgeOp > MIN_OPACITY) {
+      const edgeMat = new THREE.LineBasicMaterial({
+        color, transparent: true, opacity: edgeOp, depthWrite: false,
+      });
+      dest.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+    }
+
+    if (dotOp > MIN_OPACITY) {
+      const dotSize = Math.max(0.004, Math.min(0.013, r * 0.018));
+      const vtxGeo = new THREE.SphereGeometry(dotSize, 6, 6);
+      const dotMat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: dotOp, depthWrite: false,
+      });
+      const pos = geo.attributes.position;
+      const seen = new Set();
+      for (let pi = 0; pi < pos.count; pi++) {
+        const x = pos.getX(pi), y = pos.getY(pi), z = pos.getZ(pi);
+        const key = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const dot = new THREE.Mesh(vtxGeo, dotMat);
+        dot.position.set(x, y, z);
+        dest.add(dot);
+      }
+    }
+  });
+
+  group.add(up);
+  group.add(down);
+  // 恢复到当前自转角（停转后再开、或重建场景时都不会跳位）
+  up.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
+  down.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
+  rigs.push({ idx: layerDefs.indexOf(L), upper: up, lower: down });
+}
+
+// 常规类型：单几何 + 面/边/点三种材质
+function addPlainLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs) {
+  // 星四面体：在转或转过（残留角度）都保持拆组，姿态用四元数表达
+  const spin = spinSpec(L);
+  if (L.type === 'StellatedTetrahedron' && stellaSpun(L)) {
+    addStellaSpinLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs || [], spin);
+    return;
+  }
+
+  const geo = makeGeo(L.type, r);
+  const ex = EXTRA_SHAPE[L.type] || {};
+  const allowEdges = ex.edges !== false;   // 球面之类没有棱
+  const allowDots = ex.dots !== false;     // 也没有顶点
+
+  // —— 面：opacity 近 0 时不创建，避免透明叠加暗边 ——
+  if (faceOp > MIN_OPACITY) {
+    const faceMul = (L.type === 'StellatedTetrahedron') ? 0.7 : 1.0;
+    const faceMat = new THREE.MeshPhongMaterial({
+      color, transparent: true, opacity: faceOp * faceMul,
+      side: THREE.DoubleSide, depthWrite: false,
+      shininess: 60, emissive: color, emissiveIntensity: 0.06,
+    });
+    group.add(new THREE.Mesh(geo, faceMat));
+  }
+
+  // —— 边：opacity 近 0 时不创建；且 depthWrite:false 消除半透明暗边 ——
+  if (allowEdges && edgeOp > MIN_OPACITY) {
+    const edgeMat = new THREE.LineBasicMaterial({
+      color, transparent: true, opacity: edgeOp, depthWrite: false,
+    });
+    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+  }
+
+  // —— 顶点圆点 ——
+  if (allowDots && dotOp > MIN_OPACITY) {
+    const dotSize = Math.max(0.004, Math.min(0.013, r * 0.018));
+    const vtxGeo = new THREE.SphereGeometry(dotSize, 6, 6);
+    const dotMat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: dotOp, depthWrite: false,
+    });
+    const pos = geo.attributes.position;
+    const seen = new Set();
+    for (let pi = 0; pi < pos.count; pi++) {
+      const x = pos.getX(pi), y = pos.getY(pi), z = pos.getZ(pi);
+      const key = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const dot = new THREE.Mesh(vtxGeo, dotMat);
+      dot.position.set(x, y, z);
+      group.add(dot);
+    }
+  }
+}
+
+// 相对层的表面：用与内嵌同一套「面法线 + 面距」描述（n·x = d，±n 双向）
+// 返回一个径向投影函数：点 → 沿「中心向外」射线与最近那个面的交点
+function makeParentProjector(parentType, parentR) {
+  if (!(parentR > 0)) return null;
+  // 球面父层：径向投影就是缩放到球面
+  if (isBall(parentType)) {
+    return function (p) {
+      const len = Math.hypot(p[0], p[1], p[2]);
+      if (!(len > 1e-9)) return p;
+      const k = parentR / len;
+      return [p[0] * k, p[1] * k, p[2] * k];
+    };
+  }
+  const ns = VERTS_UNIT[DUAL[parentType]];
+  if (!ns || !ns.length) return null;
+  const d = FACE_DIST[parentType] * parentR;
+  const planes = [];
+  for (const n of ns) planes.push(n, [-n[0], -n[1], -n[2]]);
+  return function (p) {
+    const len = Math.hypot(p[0], p[1], p[2]);
+    if (!(len > 1e-9)) return p;
+    const ux = p[0] / len, uy = p[1] / len, uz = p[2] / len;
+    let tMin = Infinity;
+    for (const n of planes) {
+      const den = n[0] * ux + n[1] * uy + n[2] * uz;
+      if (den <= 1e-6) continue;                 // 只取朝外的那个面
+      const t = d / den;
+      if (t > 1e-6 && t < tMin) tMin = t;
+    }
+    if (!isFinite(tMin)) return p;
+    return [ux * tMin, uy * tMin, uz * tMin];
+  };
+}
+
+// 组装星四：8 个小四面体卦（八卦），棱按 SRT 三色 / 实虚线
+function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs, extra) {
+  rigs = rigs || [];                     // 缩略图渲染时不收集自转装置
+  // RST 投影：把棱 / 点 / 卦名标签沿中心向外投到「相对」那一层的表面上（0 = 不投）
+  const amount = (typeof L.proj === 'number') ? Math.min(1, Math.max(0, L.proj)) : 0;
+  let project = null;
+  const pk = L.relTo;
+  if (amount > 0 && pk !== null && pk !== undefined && pk >= 0) {
+    const parent = layerDefs[pk];
+    const pr = currentRadii[pk] || 0;
+    if (parent && pr >= MIN_VISIBLE_R && r > 0) {
+      // 投影器在「本层的单位空间」里求值（构建器几何按单位半径建，最后才乘 R），
+      // 所以父层半径要换算成本层单位：pr / r，否则投出来的位置会差一个 R 倍。
+      const fn = makeParentProjector(parent.type, pr / r);
+      if (fn) project = { fn, amount, segments: 10 };
+    }
+  }
+
+  // 自转：拆成上下两组，loop 里反向转（停转时保持残留角度，不跳回标准姿态）
+  const spin = spinSpec(L);
+
+  const asm = StarAsm.build(THREE, {
+    radius: r,
+    opacity: { face: faceOp, edge: edgeOp, dot: dotOp },
+    faceColor: color,
+    dotColor: color,
+    // 未显式指定时沿用 star-tetra-assembled.js 里的 defaults.dualDown
+    dualDown: (typeof L.starDual === 'boolean') ? L.starDual : null,
+    project,
+    splitGroups: stellaSpun(L),
+    ...(extra || {}),
+  });
+  if (!asm) return;
+  group.add(asm);
+
+  const up = stellaSpun(L) ? asm.getObjectByName('upper') : null;
+  const lower = stellaSpun(L) ? asm.getObjectByName('lower') : null;
+  if (up && lower) {
+    up.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
+    lower.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
+    rigs.push({ idx: layerDefs.indexOf(L), upper: up, lower });
+  }
+}
+
+function buildScene(radii) {
+  const group = new THREE.Group();
+  const rigs = [];               // 每层的上/下组自转装置，交给 loop 统一驱动
+  const visibleIdx = getVisibleOrder(radii);
+  const nVis = visibleIdx.length;
+
+  for (let vi = 0; vi < nVis; vi++) {
+    const k = visibleIdx[vi];
+    const L = layerDefs[k];
+    const r = radii[k];
+    const color = POLY[L.type].color;
+    const auto = autoOps(vi, nVis);
+
+    const faceOp = (L.opacityFace == null) ? auto.face : L.opacityFace;
+    const edgeOp = (L.opacityEdge == null) ? auto.edge : L.opacityEdge;
+    const dotOp  = (L.opacityDot  == null) ? auto.dot  : L.opacityDot;
+
+    const from = group.children.length;
+    if (L.type === 'AssembledStar' && StarAsm) {
+      addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs);
+    } else {
+      addPlainLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs);
+    }
+    // 本层新加的对象统一打标：记录所属层与材质基准透明度（hover 淡化用）
+    for (let i = from; i < group.children.length; i++) markLayer(group.children[i], k);
+
+    if (vi === nVis - 1 && nVis >= 2) {
+      const ringGeo = new THREE.TorusGeometry(r * 1.08, Math.max(0.004, r * 0.01), 6, 64);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.2, depthWrite: false,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.userData.isHintRing = true;
+      ring.userData._targetOp = 0.2;
+      markLayer(ring, k);
+      group.add(ring);
+    }
+  }
+  group.userData.spinRigs = rigs;
+  return group;
+}
+
+function disposeGroup(g) {
+  g.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) {
+      if (Array.isArray(o.material)) o.material.forEach(m => m.dispose());
+      else o.material.dispose();
+    }
+  });
+}
+
+// ---------- hover 聚焦：hover 某层缩略图时，其余层在主场景里淡化 ----------
+const FOCUS_DIM = 0.18;   // 非聚焦层的淡化倍数
+let focusLayer = -1;      // 当前生效的聚焦层（由 hover / selected 算出）
+let hoverLayer = -1;      // 鼠标悬停的层：临时预览，优先于 selected
+let selectedLayer = -1;   // 点击选中的层：鼠标移开后仍然钉住
+let soloLayer = -1;       // 单层模式（S）：临时只看这一层，不改动 layerDefs.hidden
+
+function focusMul(o) {
+  if (focusLayer < 0) return 1;
+  return (o.userData.layerIndex === focusLayer) ? 1 : FOCUS_DIM;
+}
+
+// 单层模式当前生效的目标层：
+//   - S 所在层自己可见时，以它为目标
+//   - 悬停了别的层的缩略图时，临时切到悬停层（相当于预览那层）
+//   - S 所在层被隐藏 / 半径不足时，S 失效（返回 -1，不做归零处理）
+function soloTargetLayer() {
+  if (soloLayer < 0 || !layerDefs[soloLayer]) return -1;
+  if (isLayerHidden(soloLayer) || !(currentRadii[soloLayer] >= MIN_VISIBLE_R)) return -1;
+  if (hoverLayer >= 0 && hoverLayer !== soloLayer && layerDefs[hoverLayer]
+      && !isLayerHidden(hoverLayer) && currentRadii[hoverLayer] >= MIN_VISIBLE_R) {
+    return hoverLayer;
+  }
+  return soloLayer;
+}
+
+// 单层模式下非目标层的透明度系数（0 = 临时关掉）
+function soloMul(o) {
+  const st = soloTargetLayer();
+  if (st < 0) return 1;
+  return (o.userData.layerIndex === st) ? 1 : 0;
+}
+
+// 给一层生成的整棵子树打上 layerIndex，并记住每个材质的基准 opacity
+function markLayer(obj, k) {
+  obj.traverse(o => {
+    o.userData.layerIndex = k;
+    if (!o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(m => {
+      if (m.userData._baseOp === undefined) m.userData._baseOp = m.opacity;
+    });
+  });
+}
+
+// 聚焦到「看不见的层」没有意义：隐藏或半径不足时取消淡化
+function resolveFocus() {
+  const k = (hoverLayer >= 0) ? hoverLayer : selectedLayer;
+  if (k < 0 || !layerDefs[k]) return -1;
+  if (isLayerHidden(k) || !(currentRadii[k] >= MIN_VISIBLE_R)) return -1;
+  return k;
+}
+
+function applyFocus() {
+  focusLayer = resolveFocus();
+  if (!currentGroup) return;
+  const st = soloTargetLayer();
+  currentGroup.traverse(o => {
+    if (!o.material) return;
+    let dim = (focusLayer >= 0 && o.userData.layerIndex !== focusLayer) ? FOCUS_DIM : 1;
+    // 单层模式：非目标层的透明度直接归零（等效于临时关掉那些眼睛）
+    if (st >= 0 && o.userData.layerIndex !== st) dim = 0;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(m => {
+      if (m.userData._baseOp === undefined) m.userData._baseOp = m.opacity;
+      m.opacity = m.userData._baseOp * dim;
+    });
+  });
+}
+
+function setHoverLayer(k) {
+  if (k === hoverLayer) return;
+  hoverLayer = k;
+  applyFocus();
+}
+
+function setSelectedLayer(k) {
+  if (k === selectedLayer) return;
+  selectedLayer = k;
+  document.querySelectorAll('#layerList .layerCard').forEach(card => {
+    card.classList.toggle('selected', Number(card.dataset.idx) === selectedLayer);
+  });
+  applyFocus();
+}
+
+// 单层模式开关：再点同一个 S = 退出（恢复所有层）
+function setSoloLayer(k) {
+  const next = (k === soloLayer) ? -1 : k;
+  if (next === soloLayer) return;
+  soloLayer = next;
+  rebuildPanel();
+  applyFocus();
+  updateHUD();
+}
+
+function clearFocusState() {
+  hoverLayer = -1;
+  selectedLayer = -1;
+  soloLayer = -1;
+  if (currentGroup) applyFocus();
+}
+
+function refreshScene() {
+  currentRadii = computeRadii();
+  const old = currentGroup;
+  currentGroup = buildScene(currentRadii);
+  scene.add(currentGroup);
+  if (old) { scene.remove(old); disposeGroup(old); }
+  applyFocus();
+  updateRadiusLabels();
+}
+
+function rebuild() {
+  refreshScene();
+  rebuildPanel();
+}
+
+// ---------- 层缩略图：把单层单独渲染成一张小图（眼睛下方） ----------
+const THUMB_PX = 128;                 // 离屏渲染分辨率
+const THUMB_DIR = [0.86, 0.66, 1.5];  // 固定视角方向
+let thumbR = null, thumbScene = null, thumbCam = null;
+const thumbCache = new Map();
+
+function ensureThumbRenderer() {
+  if (thumbR) return true;
+  try {
+    const canvas = document.createElement('canvas');
+    thumbR = new THREE.WebGLRenderer({
+      canvas, antialias: true, alpha: true, preserveDrawingBuffer: true,
+    });
+    thumbR.setPixelRatio(1);
+    thumbR.setSize(THUMB_PX, THUMB_PX, false);
+    thumbR.setClearColor(0x000000, 0);
+    thumbScene = new THREE.Scene();
+    thumbScene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const l1 = new THREE.DirectionalLight(0xffffff, 1.0); l1.position.set(3, 4, 5); thumbScene.add(l1);
+    const l2 = new THREE.DirectionalLight(0x6688ff, 0.55); l2.position.set(-4, -2, -3); thumbScene.add(l2);
+    thumbCam = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
+    return true;
+  } catch (_) {
+    thumbR = null;
+    return false;   // 拿不到第二个 WebGL 上下文就退化成空框
+  }
+}
+
+// 手动值照用；auto 时给一组偏清晰的值（主场景 auto 的面 0.025 在 44px 里看不见）
+// 没有棱的形状（球体）只有面，面得再提亮一档，否则小图里什么都看不到
+function thumbOps(L) {
+  const noEdge = !!(EXTRA_SHAPE[L.type] && EXTRA_SHAPE[L.type].edges === false);
+  const baseFace = (L.opacityFace == null) ? (noEdge ? 0.42 : 0.10) : L.opacityFace;
+  return {
+    // 只有面的形状给个可见下限，不然 6% 的球在 44px 里等于空白
+    face: noEdge ? Math.max(baseFace, 0.3) : baseFace,
+    edge: (L.opacityEdge == null) ? 0.95 : L.opacityEdge,
+    dot:  (L.opacityDot  == null) ? 0.75 : L.opacityDot,
+  };
+}
+
+// 相机跟着半径走（小层也填满小图），渲一帧
+function renderThumbFrame(r) {
+  const d = Math.max(r, 0.02) * 3.2;
+  thumbCam.position.set(THUMB_DIR[0], THUMB_DIR[1], THUMB_DIR[2]).normalize().multiplyScalar(d);
+  thumbCam.near = d * 0.02;
+  thumbCam.far = d * 12;
+  thumbCam.updateProjectionMatrix();
+  thumbCam.lookAt(0, 0, 0);
+  thumbR.render(thumbScene, thumbCam);
+}
+
+function thumbUrl(k, L, r) {
+  const o = thumbOps(L);
+  const key = [L.type, r.toFixed(4), o.face, o.edge, o.dot, L.proj || 0, L.relTo].join('|');
+  const hit = thumbCache.get(k);
+  if (hit && hit.key === key) return hit.url;
+  if (!ensureThumbRenderer()) return null;
+
+  const g = new THREE.Group();
+  const color = POLY[L.type].color;
+  if (L.type === 'AssembledStar' && StarAsm) {
+    addAssembledLayer(g, L, r, color, o.face, o.edge, o.dot, null, { labels: false });
+  } else {
+    addPlainLayer(g, L, r, color, o.face, o.edge, o.dot);
+  }
+
+  thumbScene.add(g);
+  renderThumbFrame(r);
+  thumbScene.remove(g);
+  disposeGroup(g);
+
+  const url = thumbR.domElement.toDataURL('image/png');
+  thumbCache.set(k, { key, url });
+  return url;
+}
+
+function paintThumbBox(box) {
+  const k = Number(box.dataset.idx);
+  const L = layerDefs[k];
+  const r = currentRadii[k] || 0;
+  box.innerHTML = '';
+  if (!L || !(r > 0)) { box.classList.add('empty'); return; }
+  const url = thumbUrl(k, L, r);
+  if (!url) { box.classList.add('empty'); return; }
+  box.classList.remove('empty');
+  const img = document.createElement('img');
+  img.alt = '';
+  img.src = url;
+  box.appendChild(img);
+}
+
+function paintThumbs(root) {
+  root.querySelectorAll('.lthumb').forEach(paintThumbBox);
+}
+
+// 拖动参数时只重绘受影响的那一层（节流，避免每帧都跑一遍离屏渲染）
+const thumbTimers = new Map();
+function scheduleThumb(k) {
+  if (thumbTimers.has(k)) return;
+  thumbTimers.set(k, setTimeout(() => {
+    thumbTimers.delete(k);
+    const box = document.querySelector(`#layerList .lthumb[data-idx="${k}"]`);
+    if (box) paintThumbBox(box);
+  }, 110));
+}
+
+// ---------- 类型缩略图（下拉菜单用，按类型缓存一次） ----------
+const typeThumbCache = new Map();
+const TYPE_THUMB_OPS = { face: 0.10, edge: 0.95, dot: 0.75 };
+
+function typeThumbUrl(type) {
+  if (typeThumbCache.has(type)) return typeThumbCache.get(type);
+  if (!POLY[type] || !ensureThumbRenderer()) return null;
+  const { edge, dot } = TYPE_THUMB_OPS;
+  const ex = EXTRA_SHAPE[type] || {};
+  const face = (ex.edges === false) ? 0.42 : TYPE_THUMB_OPS.face;
+  const g = new THREE.Group();
+  const fake = { type, opacityFace: face, opacityEdge: edge, opacityDot: dot };
+  const color = POLY[type].color;
+  if (type === 'AssembledStar' && StarAsm) {
+    addAssembledLayer(g, fake, 1, color, face, edge, dot, null, { labels: false });
+  } else {
+    addPlainLayer(g, fake, 1, color, face, edge, dot);
+  }
+  thumbScene.add(g);
+  renderThumbFrame(1);
+  thumbScene.remove(g);
+  disposeGroup(g);
+
+  const url = thumbR.domElement.toDataURL('image/png');
+  typeThumbCache.set(type, url);
+  return url;
+}
+
+// ---------- 类型下拉菜单（挂在 body 上，点左栏缩略图展开） ----------
+function typeMenuEl() {
+  return document.getElementById('typeMenu');
+}
+
+function closeTypeMenu() {
+  const m = typeMenuEl();
+  if (!m || !m.classList.contains('open')) return;
+  m.classList.remove('open');
+  m.dataset.idx = '';
+  m.innerHTML = '';
+}
+
+function openTypeMenu(k, anchor) {
+  const m = typeMenuEl();
+  if (!m || !layerDefs[k]) return;
+  const cur = layerDefs[k].type;
+  m.dataset.idx = String(k);
+  m.innerHTML = NAMES.map(t => {
+    const url = typeThumbUrl(t);
+    const sel = (t === cur) ? ' sel' : '';
+    return `<button class="mitem${sel}" data-type="${t}" title="${POLY[t].name}">`
+      + (url ? `<img src="${url}" alt="">` : '')
+      + `<span class="mname">${POLY[t].name}</span></button>`;
+  }).join('');
+  m.classList.add('open');
+
+  // 默认贴缩略图下方；下方放不下就翻到上方，右侧贴边则往回收
+  const b = anchor.getBoundingClientRect();
+  m.style.visibility = 'hidden';
+  m.style.left = '0px';
+  m.style.top = '0px';
+  const mw = m.offsetWidth, mh = m.offsetHeight;
+  let x = b.left;
+  let y = b.bottom + 6;
+  if (y + mh > innerHeight - 8) y = Math.max(8, b.top - mh - 6);
+  if (x + mw > innerWidth - 8) x = innerWidth - mw - 8;
+  m.style.left = Math.max(8, x) + 'px';
+  m.style.top = Math.max(8, y) + 'px';
+  m.style.visibility = '';
+}
+
+// ---------- 存档：server.py 读写 bolatu-saved/ ----------
+const API_SAVES = 'api/saves';
+const API_SAVE = 'api/save';
+let serverOK = false;         // 本地服务是否可用（fetch 通了）
+let currentSave = null;       // 当前存档名（保存 = 覆盖它）
+let saveFlashTimer = null;
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function collectSceneState() {
+  return {
+    v: 1,
+    // 带下划线的是运行期状态（自转累计角度等），不进存档
+    layers: layerDefs.map(L => {
+      const { _spinAngleU, _spinAngleL, ...rest } = L;
+      return { ...rest };
+    }),
+    cam: { rotX, rotY, z: camZ },
+  };
+}
+
+// 主场景截图：同一帧里 render 完立刻读像素（无需 preserveDrawingBuffer）
+function snapshotThumb() {
+  if (!renderer || !scene || !camera) return null;
+  renderer.render(scene, camera);
+  const src = renderer.domElement;
+  const W = 320, H = 200;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#050508';
+  ctx.fillRect(0, 0, W, H);
+  const k = Math.max(W / src.width, H / src.height);   // 撑满后居中裁切
+  ctx.drawImage(src, (W - src.width * k) / 2, (H - src.height * k) / 2,
+    src.width * k, src.height * k);
+  return cv.toDataURL('image/png');
+}
+
+// 输入名字：优先用 dialog.js，缺失时退回原生 prompt
+function askName(message, opts) {
+  if (typeof window !== 'undefined' && window.Dialog && window.Dialog.prompt) {
+    return window.Dialog.prompt(message, opts);
+  }
+  const v = window.prompt(message, (opts && opts.value) || '');
+  return Promise.resolve(v);
+}
+
+function setSaveFlash(text) {
+  const el = document.getElementById('saveCount');
+  if (!el) return;
+  clearTimeout(saveFlashTimer);
+  el.textContent = text;
+  el.style.color = 'rgba(150,225,175,.95)';
+  saveFlashTimer = setTimeout(() => {
+    el.style.color = '';
+    refreshSaves();
+  }, 2000);
+}
+
+function renderSaves(items) {
+  const list = document.getElementById('saveList');
+  if (!list) return;
+  const n = items.length;
+  const cnt = document.getElementById('saveCount');
+  if (cnt) cnt.textContent = n ? n + ' 个' : 'bolatu-saved/';
+  if (!n) {
+    list.innerHTML = '<div class="sempty">暂无存档</div>';
+    return;
+  }
+  list.innerHTML = items.map(it => {
+    const cur = (it.name === currentSave) ? ' cur' : '';
+    const thumb = it.thumbUrl
+      ? `<img src="${escHtml(it.thumbUrl)}" alt="">`
+      : '<span class="snoimg"></span>';
+    return `<button class="sitem${cur}" data-name="${escHtml(it.name)}" `
+      + `title="${escHtml(it.name)}">${thumb}<span class="sname">${escHtml(it.name)}</span></button>`;
+  }).join('');
+}
+
+async function refreshSaves() {
+  const wrap = document.getElementById('saves');
+  if (!wrap) return;
+  try {
+    const res = await fetch(API_SAVES, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || 'fail');
+    serverOK = true;
+    wrap.classList.remove('off');
+    renderSaves(j.items || []);
+  } catch (_) {
+    serverOK = false;
+    wrap.classList.add('off');
+    renderSaves([]);
+  }
+}
+
+async function saveScene(asNew) {
+  if (!serverOK) {
+    await notify('保存需要先启动本地服务：\n\npython server.py\n\n然后打开 http://127.0.0.1:8000/bolatu4.html',
+      { title: '未连接服务', okText: '知道了' });
+    return;
+  }
+  let name = asNew ? '' : (currentSave || '');
+  if (!name) {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const suggest = currentSave
+      ? currentSave + '-副本'
+      : `场景-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+    const v = await askName('写入 bolatu-saved/（同名会覆盖）', {
+      title: asNew ? '另存为' : '保存场景',
+      value: suggest,
+      okText: '保存',
+      placeholder: '例如 曼陀罗-01',
+    });
+    if (v === null || v === undefined) return;
+    name = String(v).trim();
+    if (!name) return;
+  }
+  try {
+    const res = await fetch(API_SAVE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, data: collectSceneState(), thumb: snapshotThumb() }),
+    });
+    const j = await res.json().catch(() => ({ ok: false, error: '返回不是 JSON' }));
+    if (!j.ok) throw new Error(j.error || '保存失败');
+    currentSave = j.name || name;
+    renderSaves(j.items || []);
+    setSaveFlash('已保存 ' + currentSave);
+  } catch (e) {
+    await notify('保存失败：' + (e && e.message ? e.message : e), { title: '保存失败' });
+  }
+}
+
+async function loadSave(name) {
+  try {
+    const res = await fetch(API_SAVE + '?name=' + encodeURIComponent(name), { cache: 'no-store' });
+    const j = await res.json();
+    if (!j.ok) throw new Error(j.error || '加载失败');
+    if (!applyStateData(j.data)) throw new Error('存档内容不完整');
+    currentSave = j.name || name;
+    hideAllSnapshot = null;
+    closeTypeMenu();
+    clearFocusState();
+    if (camera) camera.position.z = camZ;
+    rebuild();
+    scheduleSave();
+    refreshSaves();
+  } catch (e) {
+    await notify('加载失败：' + (e && e.message ? e.message : e), { title: '加载失败' });
+  }
+}
+
+// ---------- 面板 ----------
+function eyeIcon(hidden) {
+  const slash = hidden
+    ? '<path d="M3.5 3.5 L20.5 20.5" stroke="#e08585" stroke-width="2.2"/>'
+    : '';
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 12s3.8-6.6 10-6.6S22 12 22 12s-3.8 6.6-10 6.6S2 12 2 12z"/>
+    <circle cx="12" cy="12" r="2.8"/>${slash}</svg>`;
+}
+
+function rebuildPanel() {
+  closeTypeMenu();          // 面板重绘后旧菜单的内容/定位都失效
+  const list = document.getElementById('layerList');
+  const radii = currentRadii;
+  const visibleIdx = getVisibleOrder(radii);
+  // 单层模式下只有 S 所在层算「可见」，auto 参数按单层口径算
+  const soloVis = (soloLayer >= 0) ? visibleIdx.filter(k => k === soloLayer) : visibleIdx;
+  const nVis = soloVis.length;
+
+  let html = '';
+
+  for (let k = 0; k < layerDefs.length; k++) {
+    const L = layerDefs[k];
+    const r = radii[k];
+    const hidden = !!L.hidden;
+    const isRoot = (L.relTo === null || L.relTo === undefined || L.relTo < 0);
+    const vi = soloVis.indexOf(k);
+    const auto = (vi >= 0) ? autoOps(vi, nVis) : AUTO_FALLBACK;
+    // 单层模式：其它层的眼睛被临时禁用（只读状态，退出 S 即恢复）
+    const soloOff = (soloLayer >= 0 && soloLayer !== k);
+
+    let cardCls = 'layerCard';
+    // 只有几何上不可见（半径太小）才淡化卡片；手动隐藏不弄暗，靠眼睛变色表达
+    if (r < MIN_VISIBLE_R) cardCls += ' hidden-layer';
+    if (hidden) cardCls += ' user-hidden';
+    if (k === selectedLayer) cardCls += ' selected';
+
+    html += `<div class="${cardCls}" data-idx="${k}">`;
+
+    // —— 左栏：可见性 + 单层模式 + 该层单渲缩略图（独占一列） ——
+    html += `<div class="lside">`;
+    html += `<button class="leye ${hidden ? 'off' : 'on'}${soloOff ? ' solo-off' : ''}" data-act="vis" data-idx="${k}"
+      title="${soloOff ? '单层模式下已临时关闭（先关掉 S）' : (hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）')}">${eyeIcon(hidden)}</button>`;
+    html += `<button class="lsolo${soloLayer === k ? ' on' : ''}" data-act="solo" data-idx="${k}"
+      title="${soloLayer === k ? '退出单层模式（Esc 也可退出）' : '单层模式：临时只看这一层'}">S</button>`;
+    html += `<div class="lthumb" data-idx="${k}" title="点开切换类型：${POLY[L.type].name}"></div>`;
+    html += `</div>`;
+
+    // —— 右栏：名称 / 半径 / 删除 + 相对/padding + 面边点 ——
+    html += `<div class="lbody">`;
+
+    html += `<div class="lhead">`;
+    html += `<span class="lname">层 ${k + 1} · ${POLY[L.type].short}${isRoot ? ' · 根' : ''}</span>`;
+    html += `<span class="lradius">${hidden ? '已隐藏' : (r >= MIN_VISIBLE_R ? 'r=' + r.toFixed(4) : '不可见')}</span>`;
+    html += layerDefs.length > 1
+      ? `<button class="ldel" data-act="del" data-idx="${k}" title="删除该层（会弹出确认框）">×</button>`
+      : `<button class="ldel" disabled title="至少保留一层">×</button>`;
+    html += `</div>`;
+
+    let opts = `<option value="-1"${(L.relTo == null || L.relTo < 0) ? ' selected' : ''}>无（根）</option>`;
+    for (let j = 0; j < layerDefs.length; j++) {
+      if (j === k) continue;
+      const sel = (L.relTo === j) ? ' selected' : '';
+      opts += `<option value="${j}"${sel}>层 ${j + 1} · ${POLY[layerDefs[j].type].short}</option>`;
+    }
+    html += `<div class="lrow">`;
+    html += `<div class="lrowLine"><label>相对</label><select data-act="rel" data-idx="${k}">${opts}</select></div>`;
+    if (!isRoot) {
+      html += `<div class="lrowLine"><label>padding</label>`;
+      html += `<input type="range" data-act="pad" data-idx="${k}" min="0" max="30" step="1" value="${Math.round(L.padding * 100)}">`;
+      html += `<span class="lval">${Math.round(L.padding * 100)}%</span></div>`;
+    }
+    // 组装星四专有：把 RST 三色棱沿「中心向外」投到相对层表面上
+    if (L.type === 'AssembledStar' && !isRoot) {
+      const pj = Math.round((typeof L.proj === 'number' ? L.proj : 0) * 100);
+      html += `<div class="lrowLine"><label title="把 RST 棱沿中心向外方向投影到「相对」那一层的表面上">RST投影</label>`;
+      html += `<input type="range" data-act="proj" data-idx="${k}" min="0" max="100" step="1" value="${pj}">`;
+      html += `<span class="lval">${pj}%</span></div>`;
+    }
+    // 星四面体系专有：上下两组绕 3 重轴反向自转
+    if (L.type === 'StellatedTetrahedron' || L.type === 'AssembledStar') {
+      const sp = Math.round(typeof L.spin === 'number' ? L.spin : 0);
+      const ratio = (L.spinRatio === '2:3') ? '2:3' : '1:1';
+      html += `<div class="lrowLine"><label title="上下两组绕同一条 3 重轴反向自转（度/秒，0 = 停）">自转</label>`;
+      html += `<input type="range" data-act="spin" data-idx="${k}" min="0" max="60" step="1" value="${sp}">`;
+      html += `<span class="lval">${sp}°/s</span></div>`;
+      html += `<div class="lrowLine"><label title="上组 : 下组 的转速比">速度比</label>`;
+      html += `<select data-act="spinratio" data-idx="${k}">`;
+      html += `<option value="1:1"${ratio === '1:1' ? ' selected' : ''}>1 : 1</option>`;
+      html += `<option value="2:3"${ratio === '2:3' ? ' selected' : ''}>2 : 3</option>`;
+      html += `</select></div>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="lrow lops">`;
+    for (const op of OPS_DEF) {
+      const raw = L[op.key];
+      const isAuto = (raw === null || raw === undefined);
+      const val = isAuto ? auto[op.kind] : raw;
+      const pct = Math.round(val * 100);
+      html += `<div class="lrowLine op-${op.kind}">`;
+      html += `<i class="mk mk-${op.kind}"></i>`;
+      html += `<label>${op.label}</label>`;
+      html += `<input type="range" data-act="${op.act}" data-idx="${k}" min="0" max="100" step="1" value="${pct}">`;
+      html += `<span class="lval${isAuto ? ' auto' : ''}">${isAuto ? 'auto' : pct + '%'}</span>`;
+      html += `<button class="lauto${isAuto ? ' on' : ''}" data-act="opauto" data-idx="${k}" data-key="${op.key}" title="恢复自动">A</button>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+
+    html += `</div>`;   // .lbody
+    html += `</div>`;   // .layerCard
+  }
+  list.innerHTML = html;
+  bindPanelEvents(list);
+  updateHideAllBtn();
+  paintThumbs(list);
+}
+
+// ---------- 隐藏 / 显示 ----------
+// 一键全隐：记录当前每层的隐藏状态，"全部显示"时原样恢复，
+// 不会破坏单独设置过的面/边/点透明度，也不丢每层的隐藏偏好。
+let hideAllSnapshot = null;
+
+function allHidden() {
+  return layerDefs.length > 0 && layerDefs.every(L => !!L.hidden);
+}
+
+function toggleHideAll() {
+  if (allHidden()) {
+    if (hideAllSnapshot) {
+      hideAllSnapshot.forEach((h, i) => { if (layerDefs[i]) layerDefs[i].hidden = h; });
+    } else {
+      for (const L of layerDefs) L.hidden = false;
+    }
+    hideAllSnapshot = null;
+  } else {
+    hideAllSnapshot = layerDefs.map(L => !!L.hidden);
+    for (const L of layerDefs) L.hidden = true;
+  }
+  rebuild();
+  scheduleSave();
+}
+
+function updateHideAllBtn() {
+  const btn = document.getElementById('hideAllBtn');
+  if (!btn) return;
+  const all = allHidden();
+  btn.textContent = all ? '全部显示' : '隐藏全部';
+  btn.classList.toggle('allhidden', all);
+}
+
+// ---------- 对话框封装（dialog.js） ----------
+// dialog.js 未加载成功时退回原生 confirm，保证功能不中断
+const hasDialog = typeof window !== 'undefined' && !!window.Dialog;
+
+function askConfirm(message, opts) {
+  if (hasDialog) return window.Dialog.confirm(message, opts);
+  return Promise.resolve(window.confirm(message));
+}
+
+function notify(message, opts) {
+  if (hasDialog) return window.Dialog.alert(message, opts);
+  window.alert(message);
+  return Promise.resolve();
+}
+
+function bindPanelEvents(list) {
+  list.querySelectorAll('[data-act="vis"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.idx;
+      // 单层模式下：其它层的眼睛被临时禁用（不改 layerDefs.hidden，退出 S 即恢复）
+      if (soloLayer >= 0 && soloLayer !== idx) return;
+      layerDefs[idx].hidden = !layerDefs[idx].hidden;
+      hideAllSnapshot = null;   // 手动改动后取消"全隐快照"
+      // 把 S 所在层藏起来会让单层模式空场，直接退出 S
+      if (soloLayer === idx) soloLayer = -1;
+      rebuild();
+      scheduleSave();
+    });
+  });
+
+  // S 按钮 = 单层模式：临时只看这一层（再点一次退出）
+  list.querySelectorAll('[data-act="solo"]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      setSoloLayer(+btn.dataset.idx);
+    });
+  });
+
+  // 左栏缩略图 = 类型下拉入口
+  list.querySelectorAll('.lthumb').forEach(box => {
+    box.addEventListener('click', e => {
+      e.stopPropagation();
+      const k = +box.dataset.idx;
+      setSelectedLayer(k);
+      const m = typeMenuEl();
+      if (m && m.classList.contains('open') && m.dataset.idx === String(k)) closeTypeMenu();
+      else openTypeMenu(k, box);
+    });
+  });
+
+  list.querySelectorAll('[data-act="rel"]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const idx = +sel.dataset.idx;
+      const v = +sel.value;
+      layerDefs[idx].relTo = v < 0 ? null : v;
+      rebuild();
+      scheduleSave();
+    });
+  });
+
+  list.querySelectorAll('[data-act="pad"]').forEach(slider => {
+    slider.addEventListener('input', () => {
+      const idx = +slider.dataset.idx;
+      layerDefs[idx].padding = +slider.value / 100;
+      const span = slider.parentElement.querySelector('.lval');
+      if (span) span.textContent = slider.value + '%';
+      refreshScene();
+      scheduleThumb(idx);       // 拖动中实时刷新该层缩略图（节流）
+    });
+    slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
+  });
+
+  // 星四面体系：自转速度 / 上下组速度比（速度与比值都实时生效，不跳位）
+  list.querySelectorAll('[data-act="spin"]').forEach(slider => {
+    slider.addEventListener('input', () => {
+      const idx = +slider.dataset.idx;
+      const before = stellaSpun(layerDefs[idx]);
+      layerDefs[idx].spin = +slider.value;
+      const span = slider.parentElement.querySelector('.lval');
+      if (span) span.textContent = slider.value + '°/s';
+      // 只有「拆组 ↔ 合组」状态变化时才重建；速度增减由 loop 每帧直接生效
+      if (before !== stellaSpun(layerDefs[idx])) refreshScene();
+    });
+    slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
+  });
+  list.querySelectorAll('[data-act="spinratio"]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      layerDefs[+sel.dataset.idx].spinRatio = (sel.value === '2:3') ? '2:3' : '1:1';
+      scheduleSave();          // loop 每帧读取，切换即时生效
+    });
+  });
+
+  // 组装星四：RST 投影强度
+  list.querySelectorAll('[data-act="proj"]').forEach(slider => {
+    slider.addEventListener('input', () => {
+      const idx = +slider.dataset.idx;
+      layerDefs[idx].proj = +slider.value / 100;
+      const span = slider.parentElement.querySelector('.lval');
+      if (span) span.textContent = slider.value + '%';
+      refreshScene();
+      scheduleThumb(idx);
+    });
+    slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
+  });
+
+  for (const op of OPS_DEF) {
+    list.querySelectorAll(`[data-act="${op.act}"]`).forEach(slider => {
+      slider.addEventListener('input', () => {
+        const idx = +slider.dataset.idx;
+        layerDefs[idx][op.key] = +slider.value / 100;
+        const span = slider.parentElement.querySelector('.lval');
+        if (span) { span.textContent = slider.value + '%'; span.classList.remove('auto'); }
+        const btn = slider.parentElement.querySelector('.lauto');
+        if (btn) btn.classList.remove('on');
+        refreshScene();
+        scheduleThumb(idx);     // 0 → 非 0 时缩略图必须跟着变
+      });
+      // 松手后整表重绘一次，保证 auto 百分比 / 缩略图与最终值一致
+      slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
+    });
+  }
+
+  list.querySelectorAll('[data-act="opauto"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      layerDefs[+btn.dataset.idx][btn.dataset.key] = null;
+      rebuild();
+      scheduleSave();
+    });
+  });
+
+  list.querySelectorAll('[data-act="del"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const del = +btn.dataset.idx;
+      if (layerDefs.length <= 1) {
+        await notify('至少保留一层。');
+        return;
+      }
+      const L = layerDefs[del];
+      const ok = await askConfirm(
+        `删除「层 ${del + 1} · ${POLY[L.type].name}」？\n该层及其透明度设置将被移除。`,
+        { title: '删除确认', okText: '删除', cancelText: '取消', danger: true }
+      );
+      if (!ok) return;
+      layerDefs.splice(del, 1);
+      hideAllSnapshot = null;
+      for (const L2 of layerDefs) {
+        if (L2.relTo === null || L2.relTo === undefined || L2.relTo < 0) continue;
+        if (L2.relTo === del) L2.relTo = del > 0 ? del - 1 : null;
+        else if (L2.relTo > del) L2.relTo -= 1;
+      }
+      // 删掉的是选中 / 悬停层时同步挪位，避免聚焦到别的层
+      if (selectedLayer === del) selectedLayer = -1;
+      else if (selectedLayer > del) selectedLayer -= 1;
+      hoverLayer = -1;
+      // 单层模式的目标层被删掉也要跟着挪位
+      if (soloLayer === del) soloLayer = -1;
+      else if (soloLayer > del) soloLayer -= 1;
+      rebuild();
+      scheduleSave();
+    });
+  });
+}
+
+function updateRadiusLabels() {
+  const cards = document.querySelectorAll('#layerList .layerCard');
+  cards.forEach((card, i) => {
+    const r = currentRadii[i];
+    const hidden = isLayerHidden(i);
+    const el = card.querySelector('.lradius');
+    if (el) {
+      if (hidden) el.textContent = '已隐藏';
+      else if (r >= MIN_VISIBLE_R) el.textContent = 'r=' + r.toFixed(4);
+      else el.textContent = '不可见';
+    }
+    card.classList.toggle('user-hidden', hidden);
+    card.classList.toggle('hidden-layer', r < MIN_VISIBLE_R);
+  });
+  updateHUD();
+}
+
+function updateHUD() {
+  const radii = currentRadii;
+  let vis = getVisibleOrder(radii);
+  // 单层模式下只有目标层算可见
+  const st = soloTargetLayer();
+  if (st >= 0) vis = vis.filter(k => k === st);
+  const visCount = vis.length;
+  document.getElementById('depth').textContent = layerDefs.length;
+  document.getElementById('visible').textContent = visCount;
+  const innerR = visCount ? radii[vis[visCount - 1]] : 0;
+  document.getElementById('innerR').textContent = innerR ? innerR.toFixed(4) : '—';
+  let sum = '';
+  if (st >= 0) {
+    sum = 'S 单层';
+  } else if (visCount >= 2) {
+    const outerR = radii[vis[0]];
+    const inner = radii[vis[visCount - 1]];
+    sum = '内/外 ' + (inner / outerR * 100).toFixed(1) + '%';
+  }
+  document.getElementById('summary').textContent = sum;
+}
+
+// ---------- 初始化 ----------
+function init() {
+  loadState();
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.domElement.style.touchAction = 'none';
+  document.body.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050508);
+
+  camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.002, 100);
+  camera.position.set(0, 0, camZ);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const d1 = new THREE.DirectionalLight(0xffffff, 1.0); d1.position.set(3, 4, 5); scene.add(d1);
+  const d2 = new THREE.DirectionalLight(0x6688ff, 0.5); d2.position.set(-4, -2, -3); scene.add(d2);
+  const d3 = new THREE.DirectionalLight(0xff8866, 0.3); d3.position.set(0, -5, 2); scene.add(d3);
+
+  const starGeo = new THREE.BufferGeometry();
+  const starPos = [];
+  for (let i = 0; i < 600; i++) {
+    const r = 12 + Math.random() * 8;
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.acos(2 * Math.random() - 1);
+    starPos.push(r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph), r * Math.sin(ph) * Math.sin(th));
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+    color: 0x334455, size: 0.05, sizeAttenuation: true,
+  })));
+
+  rebuild();
+  bindEvents();
+  refreshSaves();
+  requestAnimationFrame(loop);
+}
+
+function bindEvents() {
+  const el = renderer.domElement;
+  el.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    dragging = true; moved = false;
+    last = { x: e.clientX, y: e.clientY };
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - last.x, dy = e.clientY - last.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    last = { x: e.clientX, y: e.clientY };
+    if (moved) {
+      rotY += dx * 0.007;
+      rotX += dy * 0.007;
+      rotX = Math.max(-1.3, Math.min(1.3, rotX));
+    }
+  });
+  el.addEventListener('pointerup', e => {
+    if (e.button !== 0) return;
+    dragging = false;
+    try { el.releasePointerCapture(e.pointerId); } catch(_){}
+    if (moved) scheduleSave();
+    else setSelectedLayer(-1);   // 点画布空白 = 退出锁定
+  });
+  el.addEventListener('wheel', e => {
+    e.preventDefault();
+    camera.position.z += e.deltaY * 0.001 * camera.position.z;
+    camera.position.z = Math.max(2.0, Math.min(8.0, camera.position.z));
+    camZ = camera.position.z;
+    scheduleSave();
+  }, { passive: false });
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  document.getElementById('addBtn').addEventListener('click', () => {
+    if (layerDefs.length >= MAX_LAYERS) return;
+    const prevType = layerDefs[layerDefs.length - 1].type;
+    const newIdx = layerDefs.length;
+    layerDefs.push({
+      type: randomType(prevType), padding: 0, relTo: newIdx - 1,
+      opacityFace: null, opacityEdge: null, opacityDot: null, hidden: false,
+    });
+    rebuild();
+    scheduleSave();
+    const list = document.getElementById('layerList');
+    list.scrollTop = list.scrollHeight;
+  });
+
+  // 缩略图 hover → 主场景只保留该层（临时预览）；点击卡片 → 选中并钉住；点空白 / Esc 取消
+  const layerListEl = document.getElementById('layerList');
+  layerListEl.addEventListener('pointerover', e => {
+    const thumb = (e.target && e.target.closest) ? e.target.closest('.lthumb') : null;
+    setHoverLayer(thumb ? Number(thumb.dataset.idx) : -1);
+  });
+  layerListEl.addEventListener('pointerleave', () => setHoverLayer(-1));
+
+  // 点击：卡内 → 选中该层（再点一次 = 取消选中）；面板其它空白（标题 / 卡片间隙 / 内边距）→ 取消
+  const panelEl = document.getElementById('panel');
+  panelEl.addEventListener('click', e => {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    // 眼睛 / 删除 / S 是卡内操作按钮，底部按钮行是全局操作，都不改动选中态
+    if (t.closest('.leye') || t.closest('.ldel') || t.closest('.lsolo') || t.closest('#btnRow')) return;
+    const card = t.closest('.layerCard');
+    if (!card) { setSelectedLayer(-1); return; }
+    const idx = Number(card.dataset.idx);
+    // 滑块 / 下拉 / A 按钮上的点击只做选中，不做「再点一次取消」
+    if (t.closest('input,select,textarea,button')) { setSelectedLayer(idx); return; }
+    // 已经选中的卡片再点一次 = 取消选中
+    setSelectedLayer(idx === selectedLayer ? -1 : idx);
+  });
+
+  // 类型下拉菜单：选项点击 / 点外面关闭 / 滚动与缩放时关闭
+  const typeMenuBox = document.getElementById('typeMenu');
+  typeMenuBox.addEventListener('click', e => {
+    const btn = (e.target && e.target.closest) ? e.target.closest('.mitem') : null;
+    if (!btn) return;
+    const k = Number(typeMenuBox.dataset.idx);
+    const type = btn.dataset.type;
+    closeTypeMenu();
+    if (!layerDefs[k] || !POLY[type] || layerDefs[k].type === type) return;
+    layerDefs[k].type = type;
+    rebuild();
+    scheduleSave();
+  });
+  document.addEventListener('pointerdown', e => {
+    const m = typeMenuEl();
+    if (!m || !m.classList.contains('open')) return;
+    if (m.contains(e.target)) return;
+    if (e.target && e.target.closest && e.target.closest('.lthumb')) return;
+    closeTypeMenu();
+  }, true);
+  layerListEl.addEventListener('scroll', closeTypeMenu);
+  window.addEventListener('resize', closeTypeMenu);
+
+  document.getElementById('hideAllBtn').addEventListener('click', () => {
+    toggleHideAll();
+  });
+
+  // 保存 / 另存为 / 点列表加载
+  document.getElementById('saveBtn').addEventListener('click', () => saveScene(false));
+  document.getElementById('saveAsBtn').addEventListener('click', () => saveScene(true));
+  document.getElementById('saveList').addEventListener('click', e => {
+    const btn = (e.target && e.target.closest) ? e.target.closest('.sitem') : null;
+    if (btn && btn.dataset.name) loadSave(btn.dataset.name);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', async () => {
+    const ok = await askConfirm('恢复默认层栈并清除已保存的参数？', {
+      title: '恢复默认', okText: '恢复', cancelText: '取消', danger: true,
+    });
+    if (!ok) return;
+    layerDefs = DEFAULT_LAYERS.map(o => ({ ...o }));
+    rotX = 0.15; rotY = 0.3; autoRot = 0; camZ = 3.4;
+    camera.position.z = camZ;
+    hideAllSnapshot = null;
+    clearFocusState();
+    clearState();
+    rebuild();
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); spaceHeld = !spaceHeld; return; }
+    if (e.key === 'Escape') {
+      closeTypeMenu();
+      setSelectedLayer(-1);
+      if (soloLayer >= 0) setSoloLayer(soloLayer);   // 退出单层模式
+      return;
+    }
+    const tag = (e.target && e.target.tagName || '').toUpperCase();
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (e.key === 'h' || e.key === 'H') toggleHideAll();
+  });
+}
+
+function loop() {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (!dragging && !spaceHeld) autoRot += dt * 0.15;
+  if (currentGroup) {
+    currentGroup.rotation.y = rotY + autoRot;
+    currentGroup.rotation.x = rotX;
+    currentGroup.traverse(o => {
+      if (o.userData.isHintRing && o.material) {
+        const base = o.userData._targetOp || 0.2;
+        o.material.opacity = base * (0.55 + 0.45 * Math.sin(now * 0.002)) * focusMul(o) * soloMul(o);
+        o.rotation.z += dt * 0.3;
+      }
+    });
+
+    // 星四面体自转：上下两组绕同一条 3 重轴反向转。
+    // 用累积角度（存在 layerDefs 上，重建场景也能接着当前角度转），
+    // 速度 / 转速比实时生效，改参数不会跳位。
+    const rigs = currentGroup.userData.spinRigs;
+    if (rigs && rigs.length) {
+      for (const r of rigs) {
+        const L = layerDefs[r.idx];
+        if (!L) continue;
+        const speed = (typeof L.spin === 'number') ? L.spin : 0;
+        if (!(speed > 0)) continue;
+        const ratio = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
+        const deg = dt * speed * Math.PI / 180;
+        L._spinAngleU = ((L._spinAngleU || 0) + deg * ratio[0]) % (Math.PI * 2);
+        L._spinAngleL = ((L._spinAngleL || 0) + deg * ratio[1]) % (Math.PI * 2);
+        if (r.upper) r.upper.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU);
+        if (r.lower) r.lower.quaternion.setFromAxisAngle(SPIN_AXIS, -L._spinAngleL);
+      }
+    }
+  }
+  camera.position.x = Math.sin(now * 0.0002) * 0.05;
+  camera.position.y = Math.cos(now * 0.0003) * 0.05;
+  camera.lookAt(0, 0, 0);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+let frame = loop;
+
+try { init(); }
+catch (e) { console.error(e); document.getElementById('error').style.display = 'flex'; }
+</script>
+</body>
+</html>
