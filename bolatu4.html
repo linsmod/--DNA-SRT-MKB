@@ -11,29 +11,30 @@
   /* 统一色板：单一强调色 + 中性灰 + 一个危险红（面板 / 存档列表共用） */
   :root{--acc:#9dc0ff; --acc-soft:#bcd2f6; --txt:#dcdce6; --dim:#a6a6b8;
     --faint:#82828f; --line:rgba(255,255,255,.14); --danger:#f0a0a0;
-    --sideW:300px; --panelW:400px;}
+    --sideW:300px; --panelW:380px;}
   /* 左侧栏：整块贴住窗口左边缘（自身无左右留白），区域之间只用一条分隔线 */
   #side{position:fixed;left:0;top:0;bottom:0;width:var(--sideW);z-index:20;
     display:flex;flex-direction:column;background:rgba(10,10,18,.94);
     border-right:1px solid var(--line);backdrop-filter:blur(12px);overflow:hidden;
-    font-size:12px;line-height:1.5;color:var(--txt);}
+    box-sizing:border-box;font-size:12px;line-height:1.5;color:var(--txt);}
   #sideHead{flex:0 0 auto;padding:14px 14px 12px;border-bottom:1px solid var(--line);}
   #sideHead .title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;}
   #sideHead .stat{color:#aaa;font-variant-numeric:tabular-nums;}
   #sideHead .stat b{color:#8ab4f8;font-weight:600;}
-  /* 主画面视口：夹在左栏与右侧编辑面板之间 */
+  /* 主画面视口：夹在左栏与右侧编辑栏之间 */
   #stage{position:fixed;left:var(--sideW);right:var(--panelW);top:0;bottom:0;}
 
-  #panel{position:fixed;top:16px;right:16px;background:rgba(22,24,38,.94);
-    padding:14px 14px;border-radius:12px;font-size:12px;line-height:1.5;
-    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);width:352px;
-    color:#dcdce6;z-index:10;max-height:calc(100vh - 32px);display:flex;
-    flex-direction:column;
-    box-shadow:0 12px 36px rgba(0,0,0,.45);}
-  #panel .ptitle{font-size:12.5px;font-weight:600;color:#f2f3fa;margin-bottom:10px;
+  /* 右侧编辑栏：与左栏同一套逻辑（贴边、直角、区域之间单线分割） */
+  #panel{position:fixed;right:0;top:0;bottom:0;width:var(--panelW);z-index:20;
+    display:flex;flex-direction:column;background:rgba(10,10,18,.94);
+    border-left:1px solid var(--line);backdrop-filter:blur(12px);overflow:hidden;
+    box-sizing:border-box;font-size:12px;line-height:1.5;color:var(--txt);}
+  #panelHead{flex:0 0 auto;padding:14px 14px 12px;border-bottom:1px solid var(--line);}
+  #panel .ptitle{font-size:12.5px;font-weight:600;color:#f2f3fa;
     display:flex;justify-content:space-between;align-items:center;}
   #panel .ptitle span:last-child{color:var(--faint);font-size:10px;font-weight:400;}
-  #layerList{flex:1;overflow-y:auto;padding-right:2px;margin-right:-2px;}
+  #layerList{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 14px 10px 0px;
+    border-bottom:1px solid var(--line);}
   #layerList::-webkit-scrollbar{width:6px;}
   #layerList::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);
     border-radius:3px;}
@@ -225,7 +226,7 @@
   #cube8Canvas:active{cursor:grabbing;}
 
   /* 面板底部：保存 / 另存为 */
-  #saveRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
+  #saveRow{display:flex;gap:6px;flex-shrink:0;}
   #saveBtn,#saveAsBtn{flex:1;padding:8px 0;border-radius:6px;cursor:pointer;
     font-size:11.5px;font-family:inherit;transition:all .15s;}
   #saveBtn{border:1px solid rgba(157,192,255,.5);background:rgba(157,192,255,.2);
@@ -265,16 +266,20 @@
 <div id="stage"></div>
 
 <div id="panel">
-  <div class="ptitle"><span>层栈编辑</span><span id="summary">—</span></div>
-  <div id="layerList"></div>
-  <div id="btnRow">
-    <button id="addBtn">+ 添加层</button>
-    <button id="hideAllBtn" title="一键隐藏全部层 / 恢复（H 键）">隐藏全部</button>
-    <button id="resetBtn" title="恢复默认并清除本地保存">↺</button>
+  <div id="panelHead">
+    <div class="ptitle"><span>层栈编辑</span><span id="summary">—</span></div>
   </div>
-  <div id="saveRow">
-    <button id="saveBtn" title="保存到 bolatu-saved/（需要 python server.py）">保存</button>
-    <button id="saveAsBtn" title="另存为新名字">另存为</button>
+  <div id="layerList"></div>
+  <div id="panelFoot">
+    <div id="btnRow">
+      <button id="addBtn">+ 添加层</button>
+      <button id="hideAllBtn" title="一键隐藏全部层 / 恢复（H 键）">隐藏全部</button>
+      <button id="resetBtn" title="恢复默认并清除本地保存">↺</button>
+    </div>
+    <div id="saveRow">
+      <button id="saveBtn" title="保存到 bolatu-saved/（需要 python server.py）">保存</button>
+      <button id="saveAsBtn" title="另存为新名字">另存为</button>
+    </div>
   </div>
 </div>
 
@@ -1880,7 +1885,7 @@ function bindEvents() {
     const t = e.target;
     if (!t || !t.closest) return;
     // 眼睛 / 删除 / S 是卡内操作按钮，底部按钮行是全局操作，都不改动选中态
-    if (t.closest('.leye') || t.closest('.ldel') || t.closest('.lsolo') || t.closest('#btnRow')) return;
+    if (t.closest('.leye') || t.closest('.ldel') || t.closest('.lsolo') || t.closest('#panelFoot')) return;
     const card = t.closest('.layerCard');
     if (!card) { setSelectedLayer(-1); return; }
     const idx = Number(card.dataset.idx);
