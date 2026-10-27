@@ -20,9 +20,12 @@
  *
  * 「0 PAD 填充」：内容按自身形状内切于格子盒（不悬在盒中央），
  *   把 contentScale 设成 innerRadius * √3 * sMax 即可：
- *     innerRadius = cell * CELL_BOX / 2      格子盒的内切球半径
+ *     innerRadius = cell * cellBox / 2      格子盒的内切球半径（cellBox 可调）
  *     sMax        = 子形状相对「立方体容器」的内切系数（与主场景同一套口径）
  *   内容随形状变化时用 cube.setContentScale(s) 动态改，已放置的内容会一起缩放。
+ *
+ * 「cell 间隙」可调：cube.setCellBox(v) 改格子盒边长（默认 CELL_BOX=0.92），
+ *   格子之间 / 格子与外框的空隙随之变化（v 越大越紧密，v=1 即格子相接并贴住外框）。
  *
  * 约定：factory 返回的对象以自身原点为中心、半径按 1 计；
  *       cube8 负责把它缩放进格子并摆到 2×2×2 的对应卦位。
@@ -62,6 +65,7 @@ function create(THREE, opts) {
   const canvas = o.canvas || null;
   const factory = (typeof o.factory === 'function') ? o.factory : null;
   let contentScale = (o.contentScale != null) ? o.contentScale : 0.42 * cell;   // 可被 setContentScale 动态改写
+  let cellBox = CELL_BOX;   // 格子容器盒边长（相对 cell），可被 setCellBox 动态改写
 
   /* ---------- 骨架：外立方体线框 + 各格线框 ---------- */
   const group = new THREE.Group();
@@ -82,18 +86,33 @@ function create(THREE, opts) {
   group.add(outer);
 
   const slots = [];
+  const cellBoxes = [];      // 各格的容器线框（setCellBox 时要换几何）
   cellCenters(cell, grid).forEach(c => {
     const slot = new THREE.Group();
     slot.position.set(c[0], c[1], c[2]);
     const box = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(cell * CELL_BOX, cell * CELL_BOX, cell * CELL_BOX)),
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(cell * cellBox, cell * cellBox, cell * cellBox)),
       cellMat
     );
     box.renderOrder = -1;
     slot.add(box);
     group.add(slot);
     slots.push(slot);
+    cellBoxes.push(box);
   });
+
+  /* 格子（容器）盒边长可调：改尺寸 → 重建线框几何 */
+  function setCellBox(v) {
+    if (!isFinite(v)) return;
+    const nb = Math.max(0.3, Math.min(1.2, v));
+    if (Math.abs(nb - cellBox) < 1e-4) return;
+    cellBox = nb;
+    const s = cell * cellBox;
+    for (const box of cellBoxes) {
+      box.geometry.dispose();
+      box.geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(s, s, s));
+    }
+  }
 
   /* ---------- 独立渲染器 / 场景 / 相机 ---------- */
   let renderer = null, scene = null, camera = null;
@@ -166,8 +185,9 @@ function create(THREE, opts) {
     },
 
     /* 格子容器（盒）的内切球半径：内容按它做 0 PAD 填充的基准 */
-    innerRadius: cell * CELL_BOX / 2,
-    cellBox: cell * CELL_BOX,
+    get innerRadius() { return cell * cellBox / 2; },
+    get cellBox() { return cellBox; },
+    setCellBox: setCellBox,
 
     /* 按 factory 铺满所有格 */
     setAll: function () {
