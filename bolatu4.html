@@ -33,6 +33,7 @@
   #panel .ptitle{font-size:12.5px;font-weight:600;color:#f2f3fa;
     display:flex;justify-content:space-between;align-items:center;}
   #panel .ptitle span:last-child{color:var(--faint);font-size:10px;font-weight:400;}
+  #panel .psrc{font-size:10.5px;color:var(--faint);margin-top:4px;}
   #layerList{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 14px 10px 0px;
     border-bottom:1px solid var(--line);}
   #layerList::-webkit-scrollbar{width:6px;}
@@ -170,6 +171,13 @@
   .lops .lval.auto{color:var(--faint);font-style:italic;}
 
   #btnRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
+  #srcRow{display:flex;gap:6px;margin-top:6px;flex-shrink:0;}
+  #srcRow.hidden{display:none;}
+  #followBtn{flex:1;padding:7px 0;border-radius:6px;font-size:11px;cursor:pointer;
+    border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.04);
+    color:var(--dim);font-family:inherit;transition:all .15s;}
+  #followBtn:hover{background:rgba(157,192,255,.18);color:var(--acc);
+    border-color:rgba(157,192,255,.45);}
   #addBtn{flex:1;padding:8px;border:1px dashed rgba(255,255,255,.28);
     background:rgba(255,255,255,.03);color:var(--dim);border-radius:6px;font-size:11.5px;
     cursor:pointer;transition:all .15s;}
@@ -223,6 +231,17 @@
     display:flex;justify-content:space-between;align-items:center;gap:6px;}
   #cube8Wrap .c8head .c8info{color:var(--faint);font-size:10px;font-weight:400;
     font-variant-numeric:tabular-nums;}
+  /* 面包屑：容器路径 + 当前层，可点击、自动换行 */
+  .crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:4px;flex:0 0 auto;
+    font-size:10.5px;line-height:1.5;}
+  .crumbs .crumb{padding:2px 7px;border-radius:5px;border:1px solid var(--line);
+    background:rgba(255,255,255,.05);color:var(--dim);font:inherit;font-size:10.5px;
+    cursor:pointer;white-space:nowrap;transition:all .12s;}
+  .crumbs .crumb:hover{background:rgba(157,192,255,.18);color:var(--acc);
+    border-color:rgba(157,192,255,.45);}
+  .crumbs .crumb.on{background:rgba(157,192,255,.22);color:#e2ecff;
+    border-color:rgba(157,192,255,.5);}
+  .crumbs .csep{color:var(--faint);}
   /* cell 间隙控制条：调格子（容器）盒边长，格子之间 / 格子与外框的空隙随之变化 */
   .c8ctl{display:flex;align-items:center;gap:7px;flex:0 0 auto;}
   .c8ctl label{font-size:10.5px;color:var(--dim);flex:0 0 auto;}
@@ -267,6 +286,7 @@
 
   <div id="cube8Wrap">
     <div class="c8head"><span id="cube8Title">2×2×2 组合立方体</span><span class="c8info" id="cube8Info">—</span></div>
+    <div id="crumbs" class="crumbs"></div>
     <div class="c8ctl">
       <label for="cellGap">cell 间隙</label>
       <input type="range" id="cellGap" min="50" max="100" step="1" value="92">
@@ -281,9 +301,13 @@
 <div id="panel">
   <div id="panelHead">
     <div class="ptitle"><span>层栈编辑</span><span id="summary">—</span></div>
+    <div class="psrc" id="editSrc">主场景</div>
   </div>
   <div id="layerList"></div>
   <div id="panelFoot">
+    <div id="srcRow" class="hidden">
+      <button id="followBtn" title="该格放弃独立层栈，重新跟随主场景">跟随主场景</button>
+    </div>
     <div id="btnRow">
       <button id="addBtn">+ 添加层</button>
       <button id="hideAllBtn" title="一键隐藏全部层 / 恢复（H 键）">隐藏全部</button>
@@ -472,7 +496,21 @@ const OPS_DEF = [
   { key: 'opacityDot',  kind: 'dot',  act: 'op-dot',  label: '点' },
 ];
 
-let layerDefs = DEFAULT_LAYERS.map(o => ({ ...o }));
+// ---------- 层栈的「源」 ----------
+// 主场景(root) 与 8 个 cube 格(cell) 各自持有一份层栈；
+// layerDefs 始终指向「当前编辑源」那一份 —— 右侧面板的逻辑一行都不用改，只是换源。
+let layerDefs = DEFAULT_LAYERS.map(o => ({ ...o }));   // 当前编辑源
+let rootDefs = layerDefs;                               // 主场景（根）的层栈
+const cellStacks = new Array(8).fill(null);             // 各格的独立层栈（null = 跟随根）
+let editSrc = { kind: 'root', cell: -1 };                // 当前编辑源：root / cell
+
+function cloneDefs(defs) {
+  return defs.map(o => {
+    const c = { ...o };
+    delete c._spinAngleU; delete c._spinAngleL;   // 运行期自转角度不进副本
+    return c;
+  });
+}
 
 function autoOps(vi, nVis) {
   const t = nVis > 1 ? vi / (nVis - 1) : 0.5;
@@ -491,8 +529,9 @@ function randomType(prev) {
   return t;
 }
 
-function computeRadii() {
-  const n = layerDefs.length;
+function computeRadii(defs) {
+  const L2 = defs || layerDefs;
+  const n = L2.length;
   const radii = new Array(n).fill(null);
   const state = new Array(n).fill(0);
 
@@ -500,7 +539,7 @@ function computeRadii() {
     if (state[k] === 2) return radii[k];
     if (state[k] === 1) return 0;
     state[k] = 1;
-    const L = layerDefs[k];
+    const L = L2[k];
     let r;
     if (L.relTo === null || L.relTo === undefined || L.relTo < 0) {
       r = 1.0;
@@ -511,7 +550,7 @@ function computeRadii() {
       if (pr < MIN_VISIBLE_R) {
         r = 0;
       } else {
-        const sMax = SCALE_CACHE[`${layerDefs[L.relTo].type}|${L.type}`];
+        const sMax = SCALE_CACHE[`${L2[L.relTo].type}|${L.type}`];
         r = pr * sMax * (1 - L.padding);
         if (!isFinite(r) || r < 0) r = 0;
       }
@@ -525,16 +564,17 @@ function computeRadii() {
   return radii;
 }
 
-function isLayerHidden(k) {
-  return !!(layerDefs[k] && layerDefs[k].hidden);
+function isLayerHidden(k, defs) {
+  const L2 = defs || layerDefs;
+  return !!(L2[k] && L2[k].hidden);
 }
 
 // 参与渲染的层：既没有被手动隐藏，半径也达到可见阈值
 // 手动隐藏不影响半径计算（几何层级保持不变），只影响是否生成 mesh
-function getVisibleOrder(radii) {
+function getVisibleOrder(radii, defs) {
   const vis = [];
   for (let k = 0; k < radii.length; k++) {
-    if (isLayerHidden(k)) continue;
+    if (isLayerHidden(k, defs)) continue;
     if (radii[k] >= MIN_VISIBLE_R) vis.push(k);
   }
   vis.sort((a, b) => radii[b] - radii[a]);
@@ -565,20 +605,21 @@ function scheduleSave() {
 function saveState() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      v: 1,
-      layers: layerDefs,
+      v: 2,
+      layers: rootDefs,
+      cells: cellStacks.map(s => s ? cloneDefs(s) : null),   // 各格的独立层栈
+      src: { kind: editSrc.kind, cell: editSrc.cell },      // 当前编辑源
       cam: { rotX, rotY, z: camZ },
       camCube: { rotX: cubeRotX, rotY: cubeRotY, zoom: cubeZoom, cellBox: cubeCellBox },
     }));
   } catch (_) {}
 }
 
-// 读一份 {layers, cam} 数据（localStorage 或服务器存档共用）：规范化后写进 layerDefs
-function applyStateData(data) {
-  if (!data || !Array.isArray(data.layers) || !data.layers.length) return false;
-
+// 把一份层栈数据规范化（过滤非法项、修正 relTo 越界）
+function normalizeDefs(list) {
+  if (!Array.isArray(list)) return [];
   const out = [];
-  for (const L of data.layers) {
+  for (const L of list) {
     if (!L || typeof L !== 'object' || !POLY[L.type]) continue;
     const rel = (L.relTo === null || L.relTo === undefined || !isFinite(Number(L.relTo)) || Number(L.relTo) < 0)
       ? null : Math.floor(Number(L.relTo));
@@ -596,13 +637,42 @@ function applyStateData(data) {
     });
     if (out.length >= MAX_LAYERS) break;
   }
-  if (!out.length) return false;
-
   for (let i = 0; i < out.length; i++) {
     const r = out[i].relTo;
     if (r !== null && (r >= out.length || r === i)) out[i].relTo = null;
   }
+  return out;
+}
+
+// 读一份 {layers, cells, src, cam} 数据（localStorage 或服务器存档共用）
+function applyStateData(data) {
+  if (!data) return false;
+  const out = normalizeDefs(data.layers);
+  if (!out.length) return false;
+
   layerDefs = out;
+  rootDefs = out;
+
+  // 各格的独立层栈（没有就是跟随主场景）
+  if (Array.isArray(data.cells)) {
+    for (let i = 0; i < cellStacks.length; i++) {
+      const raw = data.cells[i];
+      cellStacks[i] = (Array.isArray(raw) && raw.length) ? normalizeDefs(raw) : null;
+    }
+  }
+
+  // 当前编辑源
+  if (data.src && typeof data.src === 'object') {
+    const c = Math.floor(Number(data.src.cell));
+    if (data.src.kind === 'cell' && c >= 0 && c < cellStacks.length) {
+      if (!cellStacks[c]) cellStacks[c] = cloneDefs(rootDefs);
+      layerDefs = cellStacks[c];
+      editSrc = { kind: 'cell', cell: c };
+    } else {
+      layerDefs = rootDefs;
+      editSrc = { kind: 'root', cell: -1 };
+    }
+  }
 
   if (data.cam && typeof data.cam === 'object') {
     if (isFinite(data.cam.rotX)) rotX = Math.min(1.3, Math.max(-1.3, data.cam.rotX));
@@ -618,6 +688,8 @@ function applyStateData(data) {
     applyCubeCellBox();
     syncCellGapUI();
   }
+  updateCrumbs();
+  updateSrcPanel();
   return true;
 }
 
@@ -651,6 +723,8 @@ let currentRadii = [];
 
 // 星四面体上下两组的 3 重轴（顶点穿过对面中心的方向）就是立方体体对角线
 const SPIN_AXIS = new THREE.Vector3(1, 1, 1).normalize();
+// 构建场景时的上下文：正在构建的那份层栈 + 它的半径（「相对父层」的逻辑要查父层）
+let buildDefs = null, buildRadii = null;
 const SPIN_RATIO = { '1:1': [1, 1], '2:3': [2, 3] };
 const STELLA_UP_VERTS = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
 const STELLA_DOWN_VERTS = [[-1,-1,-1],[-1,1,1],[1,-1,1],[1,1,-1]];
@@ -778,7 +852,7 @@ function addStellaSpinLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs, spi
   // 恢复到当前自转角（停转后再开、或重建场景时都不会跳位）
   up.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
   down.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
-  rigs.push({ idx: layerDefs.indexOf(L), upper: up, lower: down });
+  rigs.push({ L: L, upper: up, lower: down });
 }
 
 // 常规类型：单几何 + 面/边/点三种材质
@@ -877,8 +951,10 @@ function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs, extr
   let project = null;
   const pk = L.relTo;
   if (amount > 0 && pk !== null && pk !== undefined && pk >= 0) {
-    const parent = layerDefs[pk];
-    const pr = currentRadii[pk] || 0;
+    const defs = buildDefs || layerDefs;
+    const radii = buildRadii || currentRadii;
+    const parent = defs[pk];
+    const pr = radii[pk] || 0;
     if (parent && pr >= MIN_VISIBLE_R && r > 0) {
       // 投影器在「本层的单位空间」里求值（构建器几何按单位半径建，最后才乘 R），
       // 所以父层半径要换算成本层单位：pr / r，否则投出来的位置会差一个 R 倍。
@@ -909,19 +985,24 @@ function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs, extr
   if (up && lower) {
     up.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
     lower.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
-    rigs.push({ idx: layerDefs.indexOf(L), upper: up, lower });
+    rigs.push({ L: L, upper: up, lower });
   }
 }
 
-function buildScene(radii) {
+function buildScene(radii, defs) {
+  const D = defs || layerDefs;
   const group = new THREE.Group();
   const rigs = [];               // 每层的上/下组自转装置，交给 loop 统一驱动
-  const visibleIdx = getVisibleOrder(radii);
+  const visibleIdx = getVisibleOrder(radii, D);
   const nVis = visibleIdx.length;
+
+  // 构建上下文：供「相对父层」的逻辑（RST 投影）查父层类型与半径
+  const prevDefs = buildDefs, prevRadii = buildRadii;
+  buildDefs = D; buildRadii = radii;
 
   for (let vi = 0; vi < nVis; vi++) {
     const k = visibleIdx[vi];
-    const L = layerDefs[k];
+    const L = D[k];
     const r = radii[k];
     const color = POLY[L.type].color;
     const auto = autoOps(vi, nVis);
@@ -951,6 +1032,7 @@ function buildScene(radii) {
       group.add(ring);
     }
   }
+  buildDefs = prevDefs; buildRadii = prevRadii;
   group.userData.spinRigs = rigs;
   return group;
 }
@@ -1018,11 +1100,23 @@ function resolveFocus() {
   return k;
 }
 
+// 淡化作用的范围：root 源 → 主场景；cell 源 → cube 里那一格的内容
+function focusGroups() {
+  if (editSrc.kind === 'root') return currentGroup ? [currentGroup] : [];
+  if (!cube8 || !cube8.slots || editSrc.cell < 0) return [];
+  const slot = cube8.slots[editSrc.cell];
+  if (!slot) return [];
+  const out = [];
+  for (let i = 1; i < slot.children.length; i++) out.push(slot.children[i]);
+  return out;
+}
+
 function applyFocus() {
   focusLayer = resolveFocus();
-  if (!currentGroup) return;
+  const groups = focusGroups();
+  if (!groups.length) return;
   const st = soloTargetLayer();
-  currentGroup.traverse(o => {
+  for (const g of groups) g.traverse(o => {
     if (!o.material) return;
     let dim = (focusLayer >= 0 && o.userData.layerIndex !== focusLayer) ? FOCUS_DIM : 1;
     // 单层模式：非目标层的透明度直接归零（等效于临时关掉那些眼睛）
@@ -1048,6 +1142,7 @@ function setSelectedLayer(k) {
     card.classList.toggle('selected', Number(card.dataset.idx) === selectedLayer);
   });
   applyFocus();
+  updateCrumbs();
 }
 
 // 单层模式开关：再点同一个 S = 退出（恢复所有层）
@@ -1065,12 +1160,13 @@ function clearFocusState() {
   selectedLayer = -1;
   soloLayer = -1;
   if (currentGroup) applyFocus();
+  updateCrumbs();
 }
 
 function refreshScene() {
-  currentRadii = computeRadii();
+  currentRadii = computeRadii(layerDefs);
   const old = currentGroup;
-  currentGroup = buildScene(currentRadii);
+  currentGroup = buildScene(currentRadii, layerDefs);
   scene.add(currentGroup);
   if (old) { scene.remove(old); disposeGroup(old); }
   applyFocus();
@@ -1081,6 +1177,122 @@ function refreshScene() {
 function rebuild() {
   refreshScene();
   rebuildPanel();
+  updateCrumbs();          // 层类型/数量变了，面包屑跟着更新
+  updateSrcPanel();
+}
+
+// ---------- 源（root / cell）切换：右侧面板逻辑不变，只换数据源 ----------
+const CUBE_GRID = 2;                 // cube 边长格数（面包屑坐标换算用）
+
+function cellLabel(i) {
+  const n = CUBE_GRID;
+  const x = i % n, y = Math.floor(i / n) % n, z = Math.floor(i / (n * n));
+  return `格(${x + 1},${y + 1},${z + 1})`;
+}
+
+// 切到别的源：先把当前源的改动存回它自己的位置，再载入目标源的层栈
+function setEditSource(kind, cell) {
+  if (editSrc.kind === 'root') rootDefs = layerDefs;
+  else if (editSrc.cell >= 0) cellStacks[editSrc.cell] = layerDefs;
+
+  if (kind === 'root') {
+    layerDefs = rootDefs;
+    editSrc = { kind: 'root', cell: -1 };
+  } else {
+    if (!cellStacks[cell]) cellStacks[cell] = cloneDefs(rootDefs);   // 该格独立一份
+    layerDefs = cellStacks[cell];
+    editSrc = { kind: 'cell', cell: cell };
+  }
+  clearFocusState();
+  rebuild();
+  updateCrumbs();
+  updateSrcPanel();
+  scheduleSave();
+}
+
+// 放弃该格的独立层栈，重新跟随主场景
+function followRoot() {
+  if (editSrc.kind !== 'cell') return;
+  cellStacks[editSrc.cell] = null;
+  editSrc = { kind: 'root', cell: -1 };
+  layerDefs = rootDefs;
+  clearFocusState();
+  rebuild();
+  updateCrumbs();
+  updateSrcPanel();
+  scheduleSave();
+}
+
+// 面板顶部：当前编辑的是哪一份
+function updateSrcPanel() {
+  const el = document.getElementById('editSrc');
+  const row = document.getElementById('srcRow');
+  if (el) {
+    el.textContent = (editSrc.kind === 'root')
+      ? '来源：主场景'
+      : '来源：' + cellLabel(editSrc.cell) + ' · 内部栈';
+  }
+  if (row) row.classList.toggle('hidden', editSrc.kind !== 'cell');
+}
+
+// 面包屑：组合立方体 › 格(x,y,z) › 层N · 类型（可点击、允许自动换行）
+function updateCrumbs() {
+  const box = document.getElementById('crumbs');
+  if (!box) return;
+  const parts = [];
+  parts.push(`<button class="crumb${editSrc.kind === 'root' ? ' on' : ''}" data-crumb="root">组合立方体</button>`);
+  if (editSrc.kind === 'cell') {
+    parts.push(`<span class="csep">›</span>`);
+    parts.push(`<button class="crumb on" data-crumb="cell:${editSrc.cell}">${cellLabel(editSrc.cell)}</button>`);
+  }
+  if (selectedLayer >= 0 && layerDefs[selectedLayer]) {
+    parts.push(`<span class="csep">›</span>`);
+    const t = POLY[layerDefs[selectedLayer].type].short;
+    parts.push(`<button class="crumb on" data-crumb="layer:${selectedLayer}">层${selectedLayer + 1} · ${t}</button>`);
+  }
+  box.innerHTML = parts.join('');
+}
+
+function bindCrumbs() {
+  const box = document.getElementById('crumbs');
+  if (!box) return;
+  box.addEventListener('click', e => {
+    const b = (e.target && e.target.closest) ? e.target.closest('[data-crumb]') : null;
+    if (!b) return;
+    const v = b.dataset.crumb;
+    if (v === 'root') setEditSource('root');
+    else if (v.startsWith('cell:')) setEditSource('cell', +v.slice(5));
+    else if (v.startsWith('layer:')) { setSelectedLayer(+v.slice(6)); updateCrumbs(); }
+  });
+}
+
+// ---------- cube 射线拾取：找出点中的是「哪一格里的哪一层」 ----------
+const cubeRay = new THREE.Raycaster();
+
+function cubePickAt(clientX, clientY) {
+  if (!cube8 || !cube8.camera || !cube8.scene) return null;
+  const cv = document.getElementById('cube8Canvas');
+  if (!cv) return null;
+  const r = cv.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  const ndc = new THREE.Vector2(
+    ((clientX - r.left) / r.width) * 2 - 1,
+    -((clientY - r.top) / r.height) * 2 + 1
+  );
+  cubeRay.params.Line.threshold = 0.02;
+  cubeRay.setFromCamera(ndc, cube8.camera);
+  const hits = cubeRay.intersectObjects(cube8.scene.children, true);
+  for (const h of hits) {
+    let o = h.object, layer = -1, slot = -1;
+    while (o) {
+      const ud = o.userData || {};
+      if (layer < 0 && ud.layerIndex !== undefined) layer = ud.layerIndex;
+      if (slot < 0 && ud.slotIndex !== undefined) slot = ud.slotIndex;
+      o = o.parent;
+    }
+    if (layer >= 0 && slot >= 0) return { cell: slot, layer: layer };
+  }
+  return null;
 }
 
 // ---------- 层缩略图：把单层单独渲染成一张小图（眼睛下方） ----------
@@ -1277,10 +1489,15 @@ function collectSceneState() {
   return {
     v: 1,
     // 带下划线的是运行期状态（自转累计角度等），不进存档
-    layers: layerDefs.map(L => {
+    layers: rootDefs.map(L => {
       const { _spinAngleU, _spinAngleL, ...rest } = L;
       return { ...rest };
     }),
+    cells: cellStacks.map(s => s ? s.map(L => {
+      const { _spinAngleU, _spinAngleL, ...rest } = L;
+      return { ...rest };
+    }) : null),
+    src: { kind: editSrc.kind, cell: editSrc.cell },
     cam: { rotX, rotY, z: camZ },
     camCube: { rotX: cubeRotX, rotY: cubeRotY, zoom: cubeZoom, cellBox: cubeCellBox },
   };
@@ -1435,7 +1652,7 @@ function rebuildPanel() {
   closeTypeMenu();          // 面板重绘后旧菜单的内容/定位都失效
   const list = document.getElementById('layerList');
   const radii = currentRadii;
-  const visibleIdx = getVisibleOrder(radii);
+  const visibleIdx = getVisibleOrder(radii, layerDefs);
   // 单层模式下只有 S 所在层算「可见」，auto 参数按单层口径算
   const soloVis = (soloLayer >= 0) ? visibleIdx.filter(k => k === soloLayer) : visibleIdx;
   const nVis = soloVis.length;
@@ -1755,7 +1972,7 @@ function updateRadiusLabels() {
 
 function updateHUD() {
   const radii = currentRadii;
-  let vis = getVisibleOrder(radii);
+  let vis = getVisibleOrder(radii, layerDefs);
   // 单层模式下只有目标层算可见
   const st = soloTargetLayer();
   if (st >= 0) vis = vis.filter(k => k === st);
@@ -1832,6 +2049,9 @@ function init() {
   initCube8();
   bindCube8Controls();
   bindCellGapControl();
+  bindCrumbs();
+  updateCrumbs();
+  updateSrcPanel();
   requestAnimationFrame(loop);
 }
 
@@ -1948,12 +2168,19 @@ function bindEvents() {
     if (btn && btn.dataset.name) loadSave(btn.dataset.name);
   });
 
+  // 该格放弃独立层栈 → 重新跟随主场景
+  const followBtn = document.getElementById('followBtn');
+  if (followBtn) followBtn.addEventListener('click', followRoot);
+
   document.getElementById('resetBtn').addEventListener('click', async () => {
     const ok = await askConfirm('恢复默认层栈并清除已保存的参数？', {
       title: '恢复默认', okText: '恢复', cancelText: '取消', danger: true,
     });
     if (!ok) return;
     layerDefs = DEFAULT_LAYERS.map(o => ({ ...o }));
+    rootDefs = layerDefs;
+    for (let i = 0; i < cellStacks.length; i++) cellStacks[i] = null;
+    editSrc = { kind: 'root', cell: -1 };
     rotX = 0.15; rotY = 0.3; autoRot = 0; camZ = 3.4;
     camera.position.z = camZ;
     cubeRotX = 0.15; cubeRotY = 0.3; cubeZoom = 1; applyCubeZoom();
@@ -1961,6 +2188,7 @@ function bindEvents() {
     hideAllSnapshot = null;
     clearFocusState();
     clearState();
+    updateSrcPanel();
     rebuild();
   });
 
@@ -1982,19 +2210,28 @@ function bindEvents() {
 // 角度只按 layerDefs 累加一次（主场景与立方体副本共用同一批 L._spinAngle*），
 // 姿态再分别套到各自的装置上 —— 否则两处都累加会把自转速度翻倍。
 function advanceSpinAngles(dt) {
-  for (const L of layerDefs) {
-    const speed = (typeof L.spin === 'number') ? L.spin : 0;
-    if (!(speed > 0)) continue;
-    const ratio = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
-    const deg = dt * speed * Math.PI / 180;
-    L._spinAngleU = ((L._spinAngleU || 0) + deg * ratio[0]) % (Math.PI * 2);
-    L._spinAngleL = ((L._spinAngleL || 0) + deg * ratio[1]) % (Math.PI * 2);
+  // 角度只按「层对象」累加一次：同一个 L 可能同时出现在多个源里（当前源 = 某格），
+  // 用对象身份去重，避免速度翻倍。
+  const seen = new Set();
+  const all = [rootDefs, layerDefs];
+  for (const s of cellStacks) if (s) all.push(s);
+  for (const defs of all) {
+    for (const L of defs) {
+      if (seen.has(L)) continue;
+      seen.add(L);
+      const speed = (typeof L.spin === 'number') ? L.spin : 0;
+      if (!(speed > 0)) continue;
+      const ratio = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
+      const deg = dt * speed * Math.PI / 180;
+      L._spinAngleU = ((L._spinAngleU || 0) + deg * ratio[0]) % (Math.PI * 2);
+      L._spinAngleL = ((L._spinAngleL || 0) + deg * ratio[1]) % (Math.PI * 2);
+    }
   }
 }
 function applySpinRigs(rigs) {
   if (!rigs || !rigs.length) return;
   for (const r of rigs) {
-    const L = layerDefs[r.idx];
+    const L = r.L;
     if (!L) continue;
     if (r.upper) r.upper.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
     if (r.lower) r.lower.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
@@ -2013,11 +2250,13 @@ function applyCubeZoom() {
   if (cube8 && cube8.group) cube8.group.scale.setScalar(cubeZoom);
 }
 
-// 格子（容器）盒边长 → 格子之间 / 格子与外框的间隙；内容按新尺寸重算，保持 0 PAD
+// 格子（容器）盒边长 → 格子之间 / 格子与外框的间隙；各格内容按新尺寸重算，保持 0 PAD
 function applyCubeCellBox() {
   if (!cube8) return;
   cube8.setCellBox(cubeCellBox);
-  cube8.setContentScale(cubeContentScale());
+  for (let i = 0; i < 8; i++) {
+    cube8.setCellScale(i, cellContentScale(cellStacks[i] || rootDefs));
+  }
 }
 
 // 控件与状态互相同步（读档 / 初始时用）
@@ -2070,7 +2309,13 @@ function bindCube8Controls() {
     if (!dragging) return;
     dragging = false;
     try { cv.releasePointerCapture(e.pointerId); } catch (_) {}
-    if (moved) scheduleSave();
+    if (moved) { scheduleSave(); return; }
+    // 点击（没拖动）→ 射线拾取：命中「哪一格里的哪一层」，
+    // 就把右侧面板切到那个源的内部栈，并选中命中的那一层
+    const hit = cubePickAt(e.clientX, e.clientY);
+    if (!hit) return;
+    setEditSource('cell', hit.cell);
+    setSelectedLayer(hit.layer);
   };
   cv.addEventListener('pointerup', end);
   cv.addEventListener('pointercancel', end);
@@ -2086,9 +2331,10 @@ function bindCube8Controls() {
 // 缩放口径与主场景「相对内嵌」一致（子贴父的面）：
 //   contentScale = 盒子内切球半径 × √3 × SCALE_CACHE['Cube|根层类型']
 //   （√3 是「立方体外接球半径 1 ↔ 面距 1/√3」的换算系数）
-function cubeContentScale() {
-  const root = layerDefs.find(L => L.relTo === null || L.relTo === undefined || L.relTo < 0);
-  const type = (root && root.type) || (layerDefs[0] && layerDefs[0].type) || 'Cube';
+function cellContentScale(defs) {
+  const D = defs || layerDefs;
+  const root = D.find(L => L.relTo === null || L.relTo === undefined || L.relTo < 0);
+  const type = (root && root.type) || (D[0] && D[0].type) || 'Cube';
   const sMax = SCALE_CACHE['Cube|' + type];
   const inner = (cube8 && isFinite(cube8.innerRadius)) ? cube8.innerRadius : 0.46;
   return inner * SQRT3 * (isFinite(sMax) ? sMax : 1);
@@ -2102,9 +2348,12 @@ function initCube8() {
     canvas,
     grid,
     cell: 1,
-    factory: () => {
-      // 每格一份「主场景的整体」：同一套层栈、同样的相对半径与投影
-      const g = buildScene(currentRadii);
+    factory: (i) => {
+      // 每格一份自己的层栈：没独立过的格跟随主场景（rootDefs）
+      const defs = cellStacks[i] || rootDefs;
+      const radii = computeRadii(defs);
+      const g = buildScene(radii, defs);
+      g.userData.slotIndex = i;          // 射线拾取：认出命中的是哪一格
       const rigs = g.userData.spinRigs || [];
       for (const r of rigs) cube8Rigs.push(r);
       return g;
@@ -2112,8 +2361,7 @@ function initCube8() {
   });
   const title = document.getElementById('cube8Title');
   if (title) title.textContent = grid + '×' + grid + '×' + grid + ' 组合立方体';
-  cube8.setCellBox(cubeCellBox);
-  cube8.setContentScale(cubeContentScale());   // 0 PAD 填充：内容内切于格子盒
+  applyCubeCellBox();                   // 0 PAD 填充：各格内容内切于格子盒
   applyCubeZoom();
   rebuildCube8();
 }
@@ -2121,12 +2369,16 @@ function initCube8() {
 function rebuildCube8() {
   if (!cube8) return;
   cube8Rigs = [];
-  cube8.setContentScale(cubeContentScale());    // 内容形状变了要重算缩放
   cube8.setAll();
+  // 每格按自己的层栈重算 0 PAD 填充比例
+  for (let i = 0; i < 8; i++) {
+    cube8.setCellScale(i, cellContentScale(cellStacks[i] || rootDefs));
+  }
   cube8.setRotation(cubeRotX, cubeRotY);   // 独立姿态：不跟随主画面
   cube8.resize();
   cube8.render();
-  const vis = getVisibleOrder(currentRadii).length;
+  applyFocus();                             // 源在格上时，淡化要作用到这一格的内容
+  const vis = getVisibleOrder(currentRadii, layerDefs).length;
   const info = document.getElementById('cube8Info');
   if (info) info.textContent = (cube8.cellCount || 8) + ' 格 × ' + vis + ' 层';
 }

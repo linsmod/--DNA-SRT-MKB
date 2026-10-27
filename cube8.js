@@ -65,6 +65,7 @@ function create(THREE, opts) {
   const canvas = o.canvas || null;
   const factory = (typeof o.factory === 'function') ? o.factory : null;
   let contentScale = (o.contentScale != null) ? o.contentScale : 0.42 * cell;   // 可被 setContentScale 动态改写
+  const cellScales = new Array(nCells).fill(null);   // 每格独立缩放（null = 用默认）
   let cellBox = CELL_BOX;   // 格子容器盒边长（相对 cell），可被 setCellBox 动态改写
 
   /* ---------- 骨架：外立方体线框 + 各格线框 ---------- */
@@ -150,6 +151,8 @@ function create(THREE, opts) {
   function setContent(i, obj) {
     const slot = slots[i];
     if (!slot) return;
+    // 打标：射线拾取时靠它认出「命中的是哪一格」
+    slot.userData.slotIndex = i;
     // 清掉旧内容（只清内容层，保留格子线框）
     while (slot.children.length > 1) {
       const old = slot.children[slot.children.length - 1];
@@ -157,7 +160,7 @@ function create(THREE, opts) {
       disposeObject(old);
     }
     if (!obj) return;
-    obj.scale.setScalar(contentScale);
+    obj.scale.setScalar(cellScales[i] != null ? cellScales[i] : contentScale);
     slot.add(obj);
   }
 
@@ -179,9 +182,18 @@ function create(THREE, opts) {
         const slot = slots[i];
         if (!slot) continue;
         for (let k = 1; k < slot.children.length; k++) {
-          slot.children[k].scale.setScalar(contentScale);
+          slot.children[k].scale.setScalar(cellScales[i] != null ? cellScales[i] : contentScale);
         }
       }
+    },
+
+    /* 单格独立缩放：各格内容形状不同 → 各自算 0 PAD 填充比例 */
+    setCellScale: function (i, s) {
+      if (!isFinite(s) || s <= 0) return;
+      cellScales[i] = s;
+      const slot = slots[i];
+      if (!slot) return;
+      for (let k = 1; k < slot.children.length; k++) slot.children[k].scale.setScalar(s);
     },
 
     /* 格子容器（盒）的内切球半径：内容按它做 0 PAD 填充的基准 */
