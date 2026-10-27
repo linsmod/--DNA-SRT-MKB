@@ -327,18 +327,33 @@ function build(THREE, opts) {
     }
   });
 
+  /* 上下两组是否拆成独立子组（自转用）：拆开后两组各画各的，
+     不再把重合的中央八面体棱去重，这样转起来才看得出是两组在动 */
+  const split = o.splitGroups === true;
+  const lanes = { upper: null, lower: null };
+  if (split) {
+    lanes.upper = new THREE.Group();
+    lanes.lower = new THREE.Group();
+    lanes.upper.name = 'upper';
+    lanes.lower.name = 'lower';
+    group.add(lanes.upper);
+    group.add(lanes.lower);
+  }
+  const laneOf = key => (split ? lanes[key] : group);
+
   /* ---- 面：8 件小四面体的 32 个三角面，单色半透明 ---- */
   if (faceOp > minOp) {
-    const pos = [];
-    for (const q of quads) {
-      for (const f of FACES) {
-        for (const idx of f) {
-          const p = q.pts[idx];
-          pos.push(p[0] * R, p[1] * R, p[2] * R);
+    const addFaces = (list, dest) => {
+      const pos = [];
+      for (const q of list) {
+        for (const f of FACES) {
+          for (const idx of f) {
+            const p = q.pts[idx];
+            pos.push(p[0] * R, p[1] * R, p[2] * R);
+          }
         }
       }
-    }
-    if (pos.length) {
+      if (!pos.length) return;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       geo.computeVertexNormals();
@@ -349,7 +364,13 @@ function build(THREE, opts) {
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.userData.kind = 'face';
-      group.add(mesh);
+      dest.add(mesh);
+    };
+    if (split) {
+      addFaces(quads.filter(q => q.frame === 'upper'), lanes.upper);
+      addFaces(quads.filter(q => q.frame === 'lower'), lanes.lower);
+    } else {
+      addFaces(quads, group);
     }
   }
 
@@ -390,13 +411,16 @@ function build(THREE, opts) {
         const a = q.pts[def[0]], b = q.pts[def[1]];
         const ka = pointKey(a), kb = pointKey(b);
         const edgeKey = ka < kb ? ka + '>' + kb : kb + '>' + ka;
-        if (drawnEdge.has(edgeKey)) return;
-        drawnEdge.add(edgeKey);
+        if (!split) {
+          // 不分组时才去重（自转分组后两组各画各的）
+          if (drawnEdge.has(edgeKey)) return;
+          drawnEdge.add(edgeKey);
+        }
 
         const srt = (e && cols[e.srt]) ? e.srt : 'S';
         const style = (e && e.style === 'dashed') ? 'dashed' : 'solid';
-        const key = srt + '|' + style;
-        if (!buckets[key]) buckets[key] = { srt, style, pos: [], dist: [] };
+        const key = (split ? q.frame + '|' : '') + srt + '|' + style;
+        if (!buckets[key]) buckets[key] = { frame: q.frame, srt, style, pos: [], dist: [] };
         const bucket = buckets[key];
 
         const nSeg = warping ? projSeg : 1;
@@ -435,11 +459,11 @@ function build(THREE, opts) {
       const ls = new THREE.LineSegments(geo, mat);
       ls.userData.kind = 'edge';
       ls.userData.srt = b.srt;
-      group.add(ls);
+      laneOf(b.frame).add(ls);
     });
   }
 
-  /* ---- 点：8 个大顶点（实心）+ 12 个大边中点（稍小） ---- */
+  /* ---- 点：8 个大顶点（实心）+ 6 个面心（稍小，split 时两组各一份） ---- */
   if (dotOp > minOp) {
     const dotSize = Math.max(0.004, Math.min(0.013, R * 0.018));
     const sph = new THREE.SphereGeometry(dotSize, 8, 8);
@@ -447,18 +471,18 @@ function build(THREE, opts) {
       color: dotColor, transparent: true, opacity: dotOp, depthWrite: false
     });
     const seen = new Set();
-    const addDot = (p, scale) => {
-      const key = pointKey(p);
+    const addDot = (p, scale, frame) => {
+      const key = (split ? frame + '|' : '') + pointKey(p);
       if (seen.has(key)) return;
       seen.add(key);
       const dot = new THREE.Mesh(sph, mat);
       dot.position.set(p[0] * R, p[1] * R, p[2] * R);
       if (scale !== 1) dot.scale.setScalar(scale);
       dot.userData.kind = 'dot';
-      group.add(dot);
+      laneOf(frame).add(dot);
     };
-    ['upper', 'lower'].forEach(key => { for (const v of V[key]) addDot(v, 1); });
-    for (const q of quads) { for (let i = 1; i < 4; i++) addDot(q.pts[i], 0.68); }
+    ['upper', 'lower'].forEach(key => { for (const v of V[key]) addDot(v, 1, key); });
+    for (const q of quads) { for (let i = 1; i < 4; i++) addDot(q.pts[i], 0.68, q.frame); }
   }
 
   return group;

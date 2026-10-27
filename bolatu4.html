@@ -525,6 +525,8 @@ function applyStateData(data) {
       opacityEdge: numOrNull(L.opacityEdge),
       opacityDot:  numOrNull(L.opacityDot),
       proj: clampNum(L.proj, 0, 1, 0),   // RST 投影强度（仅组装星四用）
+      spin: clampNum(L.spin, 0, 60, 0),  // 上下组反向自转速度 °/s（星四面体系）
+      spinRatio: (L.spinRatio === '2:3') ? '2:3' : '1:1',
       hidden: !!L.hidden,
     });
     if (out.length >= MAX_LAYERS) break;
@@ -569,6 +571,42 @@ let autoRot = 0;
 let lastT = performance.now();
 let currentRadii = [];
 
+// 星四面体上下两组的 3 重轴（顶点穿过对面中心的方向）就是立方体体对角线
+const SPIN_AXIS = new THREE.Vector3(1, 1, 1).normalize();
+const SPIN_RATIO = { '1:1': [1, 1], '2:3': [2, 3] };
+const STELLA_UP_VERTS = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+const STELLA_DOWN_VERTS = [[-1,-1,-1],[-1,1,1],[1,-1,1],[1,1,-1]];
+
+// 自转配置：speed 为 °/秒，ratio 决定上组 : 下组 的转速比（下组反向）
+function spinSpec(L) {
+  const speed = (typeof L.spin === 'number') ? L.spin : 0;
+  if (!(speed > 0)) return null;
+  const r = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
+  return { speed, a: r[0], b: r[1] };
+}
+
+// 是否处于「已拆组」状态：在转，或曾经转过（残留角度）。
+// 拆组后几何保持标准姿态、姿态全靠四元数，因此 0 ↔ 转 之间完全连续。
+function stellaSpun(L) {
+  return !!((L.spin > 0) || L._spinAngleU || L._spinAngleL);
+}
+
+// 单个四面体（4 顶点）的几何，与 makeStellatedTetrahedronGeo 里的顶点/索引口径一致
+function makeStellaPartGeo(baseVerts, s) {
+  const verts = [], idx = [];
+  const pushV = v => { verts.push(v[0] * s, v[1] * s, v[2] * s); return verts.length / 3 - 1; };
+  const i0 = baseVerts.map(pushV);
+  idx.push(i0[1], i0[2], i0[3]);
+  idx.push(i0[0], i0[3], i0[2]);
+  idx.push(i0[0], i0[2], i0[1]);
+  idx.push(i0[0], i0[1], i0[3]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function makeStellatedTetrahedronGeo(r) {
   const s = r / SQRT3;
   const A = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]].map(v => [v[0]*s, v[1]*s, v[2]*s]);
@@ -610,8 +648,70 @@ function makeGeo(type, r) {
   }
 }
 
+// 直绘星四面体 + 自转：拆成上下两个四面体，各自一个 Group（供 loop 反向旋转）
+function addStellaSpinLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs, spin) {
+  const s = r / SQRT3;
+  const up = new THREE.Group();
+  const down = new THREE.Group();
+  up.name = 'stella-upper';
+  down.name = 'stella-lower';
+
+  [[STELLA_UP_VERTS, up], [STELLA_DOWN_VERTS, down]].forEach(([base, dest]) => {
+    const geo = makeStellaPartGeo(base, s);
+
+    if (faceOp > MIN_OPACITY) {
+      const faceMat = new THREE.MeshPhongMaterial({
+        color, transparent: true, opacity: faceOp * 0.7,
+        side: THREE.DoubleSide, depthWrite: false,
+        shininess: 60, emissive: color, emissiveIntensity: 0.06,
+      });
+      dest.add(new THREE.Mesh(geo, faceMat));
+    }
+
+    if (edgeOp > MIN_OPACITY) {
+      const edgeMat = new THREE.LineBasicMaterial({
+        color, transparent: true, opacity: edgeOp, depthWrite: false,
+      });
+      dest.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+    }
+
+    if (dotOp > MIN_OPACITY) {
+      const dotSize = Math.max(0.004, Math.min(0.013, r * 0.018));
+      const vtxGeo = new THREE.SphereGeometry(dotSize, 6, 6);
+      const dotMat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: dotOp, depthWrite: false,
+      });
+      const pos = geo.attributes.position;
+      const seen = new Set();
+      for (let pi = 0; pi < pos.count; pi++) {
+        const x = pos.getX(pi), y = pos.getY(pi), z = pos.getZ(pi);
+        const key = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const dot = new THREE.Mesh(vtxGeo, dotMat);
+        dot.position.set(x, y, z);
+        dest.add(dot);
+      }
+    }
+  });
+
+  group.add(up);
+  group.add(down);
+  // 恢复到当前自转角（停转后再开、或重建场景时都不会跳位）
+  up.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
+  down.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
+  rigs.push({ idx: layerDefs.indexOf(L), upper: up, lower: down });
+}
+
 // 常规类型：单几何 + 面/边/点三种材质
-function addPlainLayer(group, L, r, color, faceOp, edgeOp, dotOp) {
+function addPlainLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs) {
+  // 星四面体：在转或转过（残留角度）都保持拆组，姿态用四元数表达
+  const spin = spinSpec(L);
+  if (L.type === 'StellatedTetrahedron' && stellaSpun(L)) {
+    addStellaSpinLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs || [], spin);
+    return;
+  }
+
   const geo = makeGeo(L.type, r);
   const ex = EXTRA_SHAPE[L.type] || {};
   const allowEdges = ex.edges !== false;   // 球面之类没有棱
@@ -692,7 +792,8 @@ function makeParentProjector(parentType, parentR) {
 }
 
 // 组装星四：8 个小四面体自带 SRT 三色棱 / 实虚线 / 顶点（独立构建器，与直绘互不干扰）
-function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp) {
+function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs) {
+  rigs = rigs || [];                     // 缩略图渲染时不收集自转装置
   // RST 投影：把棱沿中心向外投到「相对」那一层的表面上（0 = 不投）
   const amount = (typeof L.proj === 'number') ? Math.min(1, Math.max(0, L.proj)) : 0;
   let project = null;
@@ -706,6 +807,9 @@ function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp) {
     }
   }
 
+  // 自转：拆成上下两组，loop 里反向转（停转时保持残留角度，不跳回标准姿态）
+  const spin = spinSpec(L);
+
   const asm = StarAsm.build(THREE, {
     radius: r,
     opacity: { face: faceOp, edge: edgeOp, dot: dotOp },
@@ -714,12 +818,23 @@ function addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp) {
     // 未显式指定时沿用 star-tetra-assembled.js 里的 defaults.dualDown
     dualDown: (typeof L.starDual === 'boolean') ? L.starDual : null,
     project,
+    splitGroups: stellaSpun(L),
   });
-  if (asm) group.add(asm);
+  if (!asm) return;
+  group.add(asm);
+
+  const up = stellaSpun(L) ? asm.getObjectByName('upper') : null;
+  const lower = stellaSpun(L) ? asm.getObjectByName('lower') : null;
+  if (up && lower) {
+    up.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU || 0);
+    lower.quaternion.setFromAxisAngle(SPIN_AXIS, -(L._spinAngleL || 0));
+    rigs.push({ idx: layerDefs.indexOf(L), upper: up, lower });
+  }
 }
 
 function buildScene(radii) {
   const group = new THREE.Group();
+  const rigs = [];               // 每层的上/下组自转装置，交给 loop 统一驱动
   const visibleIdx = getVisibleOrder(radii);
   const nVis = visibleIdx.length;
 
@@ -736,9 +851,9 @@ function buildScene(radii) {
 
     const from = group.children.length;
     if (L.type === 'AssembledStar' && StarAsm) {
-      addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp);
+      addAssembledLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs);
     } else {
-      addPlainLayer(group, L, r, color, faceOp, edgeOp, dotOp);
+      addPlainLayer(group, L, r, color, faceOp, edgeOp, dotOp, rigs);
     }
     // 本层新加的对象统一打标：记录所属层与材质基准透明度（hover 淡化用）
     for (let i = from; i < group.children.length; i++) markLayer(group.children[i], k);
@@ -755,6 +870,7 @@ function buildScene(radii) {
       group.add(ring);
     }
   }
+  group.userData.spinRigs = rigs;
   return group;
 }
 
@@ -1042,7 +1158,11 @@ function escHtml(s) {
 function collectSceneState() {
   return {
     v: 1,
-    layers: layerDefs.map(L => ({ ...L })),
+    // 带下划线的是运行期状态（自转累计角度等），不进存档
+    layers: layerDefs.map(L => {
+      const { _spinAngleU, _spinAngleL, ...rest } = L;
+      return { ...rest };
+    }),
     cam: { rotX, rotY, z: camZ },
   };
 }
@@ -1255,6 +1375,19 @@ function rebuildPanel() {
       html += `<input type="range" data-act="proj" data-idx="${k}" min="0" max="100" step="1" value="${pj}">`;
       html += `<span class="lval">${pj}%</span></div>`;
     }
+    // 星四面体系专有：上下两组绕 3 重轴反向自转
+    if (L.type === 'StellatedTetrahedron' || L.type === 'AssembledStar') {
+      const sp = Math.round(typeof L.spin === 'number' ? L.spin : 0);
+      const ratio = (L.spinRatio === '2:3') ? '2:3' : '1:1';
+      html += `<div class="lrowLine"><label title="上下两组绕同一条 3 重轴反向自转（度/秒，0 = 停）">自转</label>`;
+      html += `<input type="range" data-act="spin" data-idx="${k}" min="0" max="60" step="1" value="${sp}">`;
+      html += `<span class="lval">${sp}°/s</span></div>`;
+      html += `<div class="lrowLine"><label title="上组 : 下组 的转速比">速度比</label>`;
+      html += `<select data-act="spinratio" data-idx="${k}">`;
+      html += `<option value="1:1"${ratio === '1:1' ? ' selected' : ''}>1 : 1</option>`;
+      html += `<option value="2:3"${ratio === '2:3' ? ' selected' : ''}>2 : 3</option>`;
+      html += `</select></div>`;
+    }
     html += `</div>`;
 
     html += `<div class="lrow lops">`;
@@ -1373,6 +1506,26 @@ function bindPanelEvents(list) {
       scheduleThumb(idx);       // 拖动中实时刷新该层缩略图（节流）
     });
     slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
+  });
+
+  // 星四面体系：自转速度 / 上下组速度比（速度与比值都实时生效，不跳位）
+  list.querySelectorAll('[data-act="spin"]').forEach(slider => {
+    slider.addEventListener('input', () => {
+      const idx = +slider.dataset.idx;
+      const before = stellaSpun(layerDefs[idx]);
+      layerDefs[idx].spin = +slider.value;
+      const span = slider.parentElement.querySelector('.lval');
+      if (span) span.textContent = slider.value + '°/s';
+      // 只有「拆组 ↔ 合组」状态变化时才重建；速度增减由 loop 每帧直接生效
+      if (before !== stellaSpun(layerDefs[idx])) refreshScene();
+    });
+    slider.addEventListener('change', () => { rebuildPanel(); scheduleSave(); });
+  });
+  list.querySelectorAll('[data-act="spinratio"]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      layerDefs[+sel.dataset.idx].spinRatio = (sel.value === '2:3') ? '2:3' : '1:1';
+      scheduleSave();          // loop 每帧读取，切换即时生效
+    });
   });
 
   // 组装星四：RST 投影强度
@@ -1662,6 +1815,25 @@ function loop() {
         o.rotation.z += dt * 0.3;
       }
     });
+
+    // 星四面体自转：上下两组绕同一条 3 重轴反向转。
+    // 用累积角度（存在 layerDefs 上，重建场景也能接着当前角度转），
+    // 速度 / 转速比实时生效，改参数不会跳位。
+    const rigs = currentGroup.userData.spinRigs;
+    if (rigs && rigs.length) {
+      for (const r of rigs) {
+        const L = layerDefs[r.idx];
+        if (!L) continue;
+        const speed = (typeof L.spin === 'number') ? L.spin : 0;
+        if (!(speed > 0)) continue;
+        const ratio = SPIN_RATIO[L.spinRatio] || SPIN_RATIO['1:1'];
+        const deg = dt * speed * Math.PI / 180;
+        L._spinAngleU = ((L._spinAngleU || 0) + deg * ratio[0]) % (Math.PI * 2);
+        L._spinAngleL = ((L._spinAngleL || 0) + deg * ratio[1]) % (Math.PI * 2);
+        if (r.upper) r.upper.quaternion.setFromAxisAngle(SPIN_AXIS, L._spinAngleU);
+        if (r.lower) r.lower.quaternion.setFromAxisAngle(SPIN_AXIS, -L._spinAngleL);
+      }
+    }
   }
   camera.position.x = Math.sin(now * 0.0002) * 0.05;
   camera.position.y = Math.cos(now * 0.0003) * 0.05;
