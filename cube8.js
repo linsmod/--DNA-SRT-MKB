@@ -18,6 +18,12 @@
  *   cube.setRotation(rx, ry);   // 与主场景同姿态
  *   cube.render();
  *
+ * 「0 PAD 填充」：内容按自身形状内切于格子盒（不悬在盒中央），
+ *   把 contentScale 设成 innerRadius * √3 * sMax 即可：
+ *     innerRadius = cell * CELL_BOX / 2      格子盒的内切球半径
+ *     sMax        = 子形状相对「立方体容器」的内切系数（与主场景同一套口径）
+ *   内容随形状变化时用 cube.setContentScale(s) 动态改，已放置的内容会一起缩放。
+ *
  * 约定：factory 返回的对象以自身原点为中心、半径按 1 计；
  *       cube8 负责把它缩放进格子并摆到 2×2×2 的对应卦位。
  */
@@ -26,6 +32,7 @@
 
 const GRID = 2;      // 默认 2×2×2（8 格 = 八卦位）；改成 4 即 4×4×4（64 格 = 六十四卦位）
 const CELLS = 8;     // GRID³
+const CELL_BOX = 0.92;   // 每个格子（容器）的盒边长（相对 cell）——内容以它为「0 PAD」目标
 
 /* 格心：n×n×n 的格心，序号 i = x + n·y + n²·z（x,y,z ∈ [0,n)），
    格距 cell；n=2 时即 ±半格的八个卦位 */
@@ -54,7 +61,7 @@ function create(THREE, opts) {
   const nCells = grid * grid * grid;
   const canvas = o.canvas || null;
   const factory = (typeof o.factory === 'function') ? o.factory : null;
-  const contentScale = (o.contentScale != null) ? o.contentScale : 0.42 * cell;
+  let contentScale = (o.contentScale != null) ? o.contentScale : 0.42 * cell;   // 可被 setContentScale 动态改写
 
   /* ---------- 骨架：外立方体线框 + 各格线框 ---------- */
   const group = new THREE.Group();
@@ -79,7 +86,7 @@ function create(THREE, opts) {
     const slot = new THREE.Group();
     slot.position.set(c[0], c[1], c[2]);
     const box = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(cell * 0.92, cell * 0.92, cell * 0.92)),
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(cell * CELL_BOX, cell * CELL_BOX, cell * CELL_BOX)),
       cellMat
     );
     box.renderOrder = -1;
@@ -144,6 +151,23 @@ function create(THREE, opts) {
 
     /* 单格塞内容 */
     setContent: setContent,
+
+    /* 动态改内容缩放（内容形状变了要重算时用），已放置的内容一起缩放 */
+    setContentScale: function (s) {
+      if (!isFinite(s) || s <= 0) return;
+      contentScale = s;
+      for (let i = 0; i < nCells; i++) {
+        const slot = slots[i];
+        if (!slot) continue;
+        for (let k = 1; k < slot.children.length; k++) {
+          slot.children[k].scale.setScalar(contentScale);
+        }
+      }
+    },
+
+    /* 格子容器（盒）的内切球半径：内容按它做 0 PAD 填充的基准 */
+    innerRadius: cell * CELL_BOX / 2,
+    cellBox: cell * CELL_BOX,
 
     /* 按 factory 铺满所有格 */
     setAll: function () {
