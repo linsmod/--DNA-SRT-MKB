@@ -71,12 +71,18 @@
   .leye.on:hover{color:#cfe0ff;}
   .leye.off:hover{color:var(--txt);}
   .leye svg{display:block;width:20px;height:20px;}
-  /* 眼睛下方：该层单独渲染的缩略图 */
-  .lthumb{margin-top:7px;width:44px;height:44px;border-radius:6px;overflow:hidden;
-    border:1px solid rgba(255,255,255,.13);background:rgba(6,8,16,.55);
-    flex-shrink:0;transition:border-color .15s,opacity .15s;}
+  /* 眼睛下方：该层单独渲染的缩略图，点开是类型下拉菜单 */
+  .lthumb{position:relative;margin-top:7px;width:44px;height:44px;border-radius:6px;
+    overflow:hidden;border:1px solid rgba(255,255,255,.13);background:rgba(6,8,16,.55);
+    flex-shrink:0;cursor:pointer;transition:border-color .15s,opacity .15s;}
   .lthumb img{width:100%;height:100%;display:block;}
   .lthumb.empty{background:rgba(255,255,255,.02);border-style:dashed;}
+  .lthumb:hover{border-color:rgba(157,192,255,.6);}
+  .lthumb::after{content:'';position:absolute;right:3px;bottom:3px;width:0;height:0;
+    border-left:4px solid transparent;border-right:4px solid transparent;
+    border-top:4px solid rgba(255,255,255,.6);opacity:0;transition:opacity .15s;
+    pointer-events:none;}
+  .lthumb:hover::after{opacity:1;}
   .layerCard.selected .lthumb{border-color:rgba(157,192,255,.5);}
   .layerCard.user-hidden .lthumb{opacity:.45;}
   .lhead{display:flex;justify-content:space-between;align-items:center;
@@ -91,17 +97,24 @@
   .lhead .ldel:hover{background:rgba(240,160,160,.4);}
   .lhead .ldel:disabled{opacity:.3;cursor:not-allowed;}
 
-  /* 类型选择：默认全部中性，只有选中项保留自身颜色 */
-  .ltypes{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;
-    margin-bottom:7px;}
-  .ltypes button{padding:6px 2px;border:1px solid rgba(255,255,255,.16);
-    background:rgba(255,255,255,.05);color:var(--dim);border-radius:5px;
-    font-size:10.5px;cursor:pointer;transition:all .12s;white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;}
-  .ltypes button:hover{background:rgba(255,255,255,.13);color:var(--txt);
-    border-color:rgba(255,255,255,.32);}
-  .ltypes button.active{background:rgba(255,255,255,.11);color:var(--c);
-    border-color:var(--c);font-weight:600;}
+  /* 类型下拉菜单（点缩略图展开，挂在 body 上避免被列表裁切） */
+  #typeMenu{position:fixed;z-index:60;min-width:208px;padding:7px;border-radius:11px;
+    background:rgba(56,61,90,.97);border:1px solid rgba(255,255,255,.3);
+    box-shadow:0 18px 48px rgba(0,0,0,.55),0 0 0 1px rgba(157,192,255,.14) inset;
+    backdrop-filter:blur(12px);display:none;}
+  #typeMenu.open{display:block;}
+  .mitem{display:flex;align-items:center;gap:10px;width:100%;padding:6px 9px 6px 7px;
+    border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.05);
+    border-radius:7px;color:#eef0f8;font:inherit;font-size:12px;text-align:left;
+    cursor:pointer;margin-bottom:3px;transition:background .12s,border-color .12s;}
+  .mitem:last-child{margin-bottom:0;}
+  .mitem:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.3);}
+  .mitem img{width:30px;height:30px;border-radius:6px;display:block;flex-shrink:0;
+    background:rgba(14,18,32,.9);border:1px solid rgba(255,255,255,.22);}
+  .mitem .mname{flex:1;white-space:nowrap;}
+  .mitem.sel{background:rgba(157,192,255,.34);border-color:rgba(157,192,255,.85);
+    color:#fff;font-weight:600;}
+  .mitem.sel::after{content:'✓';color:#dce9ff;font-size:12px;font-weight:700;}
 
   .lrow{display:flex;flex-direction:column;gap:6px;}
   .lrowLine{display:flex;align-items:center;gap:7px;}
@@ -163,7 +176,7 @@
 <div id="hud">
   <div class="title">柏拉图立体 · 相对内嵌</div>
   <div class="stat"><b id="depth">4</b> 层 · 可见 <b id="visible">4</b> · 最内 r=<b id="innerR">—</b></div>
-  <div class="hint">右侧编辑每层<br>类型 / 相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停层卡 → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>删除会弹窗确认<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
+  <div class="hint">右侧编辑每层<br>点层卡<b>缩略图</b> → 选类型<br>相对 / Padding / 面·边·点透明度<br>点 <b>眼睛</b> 只隐藏该层（opacity 保留）<br>悬停层卡 → 主场景只看该层<br>点击层卡 → 锁定只看该层（Esc 取消）<br><b>隐藏全部</b> 一键全隐 / 恢复（H 键）<br>删除会弹窗确认<br>拖动旋转 · 滚轮缩放 · 空格切换自转<br>参数自动保存到本地</div>
 </div>
 
 <div id="panel">
@@ -175,6 +188,8 @@
     <button id="resetBtn" title="恢复默认并清除本地保存">↺</button>
   </div>
 </div>
+
+<div id="typeMenu"></div>
 
 <div id="error">加载失败：请检查浏览器是否支持 WebGL / 网络是否可访问 unpkg.com</div>
 
@@ -711,6 +726,17 @@ function thumbOps(L) {
   };
 }
 
+// 相机跟着半径走（小层也填满小图），渲一帧
+function renderThumbFrame(r) {
+  const d = Math.max(r, 0.02) * 3.2;
+  thumbCam.position.set(THUMB_DIR[0], THUMB_DIR[1], THUMB_DIR[2]).normalize().multiplyScalar(d);
+  thumbCam.near = d * 0.02;
+  thumbCam.far = d * 12;
+  thumbCam.updateProjectionMatrix();
+  thumbCam.lookAt(0, 0, 0);
+  thumbR.render(thumbScene, thumbCam);
+}
+
 function thumbUrl(k, L, r) {
   const o = thumbOps(L);
   const key = [L.type, r.toFixed(4), o.face, o.edge, o.dot].join('|');
@@ -727,13 +753,7 @@ function thumbUrl(k, L, r) {
   }
 
   thumbScene.add(g);
-  const d = Math.max(r, 0.02) * 3.2;       // 相机距离跟半径走，小层也填满小图
-  thumbCam.position.set(THUMB_DIR[0], THUMB_DIR[1], THUMB_DIR[2]).normalize().multiplyScalar(d);
-  thumbCam.near = d * 0.02;
-  thumbCam.far = d * 12;
-  thumbCam.updateProjectionMatrix();
-  thumbCam.lookAt(0, 0, 0);
-  thumbR.render(thumbScene, thumbCam);
+  renderThumbFrame(r);
   thumbScene.remove(g);
   disposeGroup(g);
 
@@ -772,6 +792,74 @@ function scheduleThumb(k) {
   }, 110));
 }
 
+// ---------- 类型缩略图（下拉菜单用，按类型缓存一次） ----------
+const typeThumbCache = new Map();
+const TYPE_THUMB_OPS = { face: 0.10, edge: 0.95, dot: 0.75 };
+
+function typeThumbUrl(type) {
+  if (typeThumbCache.has(type)) return typeThumbCache.get(type);
+  if (!POLY[type] || !ensureThumbRenderer()) return null;
+  const { face, edge, dot } = TYPE_THUMB_OPS;
+  const g = new THREE.Group();
+  const fake = { type, opacityFace: face, opacityEdge: edge, opacityDot: dot };
+  const color = POLY[type].color;
+  if (type === 'AssembledStar' && StarAsm) {
+    addAssembledLayer(g, fake, 1, color, face, edge, dot);
+  } else {
+    addPlainLayer(g, fake, 1, color, face, edge, dot);
+  }
+  thumbScene.add(g);
+  renderThumbFrame(1);
+  thumbScene.remove(g);
+  disposeGroup(g);
+
+  const url = thumbR.domElement.toDataURL('image/png');
+  typeThumbCache.set(type, url);
+  return url;
+}
+
+// ---------- 类型下拉菜单（挂在 body 上，点左栏缩略图展开） ----------
+function typeMenuEl() {
+  return document.getElementById('typeMenu');
+}
+
+function closeTypeMenu() {
+  const m = typeMenuEl();
+  if (!m || !m.classList.contains('open')) return;
+  m.classList.remove('open');
+  m.dataset.idx = '';
+  m.innerHTML = '';
+}
+
+function openTypeMenu(k, anchor) {
+  const m = typeMenuEl();
+  if (!m || !layerDefs[k]) return;
+  const cur = layerDefs[k].type;
+  m.dataset.idx = String(k);
+  m.innerHTML = NAMES.map(t => {
+    const url = typeThumbUrl(t);
+    const sel = (t === cur) ? ' sel' : '';
+    return `<button class="mitem${sel}" data-type="${t}" title="${POLY[t].name}">`
+      + (url ? `<img src="${url}" alt="">` : '')
+      + `<span class="mname">${POLY[t].name}</span></button>`;
+  }).join('');
+  m.classList.add('open');
+
+  // 默认贴缩略图下方；下方放不下就翻到上方，右侧贴边则往回收
+  const b = anchor.getBoundingClientRect();
+  m.style.visibility = 'hidden';
+  m.style.left = '0px';
+  m.style.top = '0px';
+  const mw = m.offsetWidth, mh = m.offsetHeight;
+  let x = b.left;
+  let y = b.bottom + 6;
+  if (y + mh > innerHeight - 8) y = Math.max(8, b.top - mh - 6);
+  if (x + mw > innerWidth - 8) x = innerWidth - mw - 8;
+  m.style.left = Math.max(8, x) + 'px';
+  m.style.top = Math.max(8, y) + 'px';
+  m.style.visibility = '';
+}
+
 // ---------- 面板 ----------
 function eyeIcon(hidden) {
   const slash = hidden
@@ -784,6 +872,7 @@ function eyeIcon(hidden) {
 }
 
 function rebuildPanel() {
+  closeTypeMenu();          // 面板重绘后旧菜单的内容/定位都失效
   const list = document.getElementById('layerList');
   const radii = currentRadii;
   const visibleIdx = getVisibleOrder(radii);
@@ -811,26 +900,18 @@ function rebuildPanel() {
     html += `<div class="lside">`;
     html += `<button class="leye ${hidden ? 'off' : 'on'}" data-act="vis" data-idx="${k}"
       title="${hidden ? '显示该层' : '隐藏该层（保留面/边/点透明度）'}">${eyeIcon(hidden)}</button>`;
-    html += `<div class="lthumb" data-idx="${k}" title="该层单独渲染预览"></div>`;
+    html += `<div class="lthumb" data-idx="${k}" title="点开切换类型：${POLY[L.type].name}"></div>`;
     html += `</div>`;
 
-    // —— 右栏：名称 / 半径 / 删除 + 类型 + 相对/padding + 面边点 ——
+    // —— 右栏：名称 / 半径 / 删除 + 相对/padding + 面边点 ——
     html += `<div class="lbody">`;
 
     html += `<div class="lhead">`;
-    html += `<span class="lname">层 ${k + 1}${isRoot ? ' · 根' : ''}</span>`;
+    html += `<span class="lname">层 ${k + 1} · ${POLY[L.type].short}${isRoot ? ' · 根' : ''}</span>`;
     html += `<span class="lradius">${hidden ? '已隐藏' : (r >= MIN_VISIBLE_R ? 'r=' + r.toFixed(4) : '不可见')}</span>`;
     html += layerDefs.length > 1
       ? `<button class="ldel" data-act="del" data-idx="${k}" title="删除该层（会弹出确认框）">×</button>`
       : `<button class="ldel" disabled title="至少保留一层">×</button>`;
-    html += `</div>`;
-
-    html += `<div class="ltypes">`;
-    for (const t of NAMES) {
-      const c = '#' + POLY[t].color.toString(16).padStart(6, '0');
-      const active = (L.type === t) ? ' active' : '';
-      html += `<button class="${active}" data-act="type" data-idx="${k}" data-type="${t}" style="--c:${c}" title="${POLY[t].name}">${POLY[t].short}</button>`;
-    }
     html += `</div>`;
 
     let opts = `<option value="-1"${(L.relTo == null || L.relTo < 0) ? ' selected' : ''}>无（根）</option>`;
@@ -932,11 +1013,15 @@ function bindPanelEvents(list) {
     });
   });
 
-  list.querySelectorAll('[data-act="type"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      layerDefs[+btn.dataset.idx].type = btn.dataset.type;
-      rebuild();
-      scheduleSave();
+  // 左栏缩略图 = 类型下拉入口
+  list.querySelectorAll('.lthumb').forEach(box => {
+    box.addEventListener('click', e => {
+      e.stopPropagation();
+      const k = +box.dataset.idx;
+      setSelectedLayer(k);
+      const m = typeMenuEl();
+      if (m && m.classList.contains('open') && m.dataset.idx === String(k)) closeTypeMenu();
+      else openTypeMenu(k, box);
     });
   });
 
@@ -1162,6 +1247,29 @@ function bindEvents() {
     setSelectedLayer(card ? Number(card.dataset.idx) : -1);
   });
 
+  // 类型下拉菜单：选项点击 / 点外面关闭 / 滚动与缩放时关闭
+  const typeMenuBox = document.getElementById('typeMenu');
+  typeMenuBox.addEventListener('click', e => {
+    const btn = (e.target && e.target.closest) ? e.target.closest('.mitem') : null;
+    if (!btn) return;
+    const k = Number(typeMenuBox.dataset.idx);
+    const type = btn.dataset.type;
+    closeTypeMenu();
+    if (!layerDefs[k] || !POLY[type] || layerDefs[k].type === type) return;
+    layerDefs[k].type = type;
+    rebuild();
+    scheduleSave();
+  });
+  document.addEventListener('pointerdown', e => {
+    const m = typeMenuEl();
+    if (!m || !m.classList.contains('open')) return;
+    if (m.contains(e.target)) return;
+    if (e.target && e.target.closest && e.target.closest('.lthumb')) return;
+    closeTypeMenu();
+  }, true);
+  layerListEl.addEventListener('scroll', closeTypeMenu);
+  window.addEventListener('resize', closeTypeMenu);
+
   document.getElementById('hideAllBtn').addEventListener('click', () => {
     toggleHideAll();
   });
@@ -1182,7 +1290,7 @@ function bindEvents() {
 
   window.addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); spaceHeld = !spaceHeld; return; }
-    if (e.key === 'Escape') { setSelectedLayer(-1); return; }
+    if (e.key === 'Escape') { closeTypeMenu(); setSelectedLayer(-1); return; }
     const tag = (e.target && e.target.tagName || '').toUpperCase();
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.key === 'h' || e.key === 'H') toggleHideAll();
